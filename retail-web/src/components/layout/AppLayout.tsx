@@ -173,7 +173,7 @@ const AppLayout: React.FC = () => {
       {/* Auto-Collapsing Sidebar */}
       <motion.aside 
         initial={false}
-        animate={{ width: isSidebarExpanded ? 280 : 100 }}
+        animate={{ width: isSidebarExpanded ? 240 : 80 }}
         transition={{ type: "spring", bounce: 0, duration: 0.4 }}
         onMouseEnter={() => setIsSidebarExpanded(true)}
         onMouseLeave={() => setIsSidebarExpanded(false)}
@@ -193,7 +193,7 @@ const AppLayout: React.FC = () => {
         </div>
 
         {/* Navigation Links */}
-        <nav className={`flex-1 flex flex-col gap-3 overflow-y-auto overflow-x-hidden custom-scrollbar ${isSidebarExpanded ? 'px-6' : 'px-5'}`}>
+        <nav className={`flex-1 flex flex-col gap-3 overflow-y-auto overflow-x-hidden custom-scrollbar ${isSidebarExpanded ? 'px-6' : 'px-4'}`}>
           <SidebarItem 
             icon={<LayoutDashboard className="w-[22px] h-[22px] stroke-[2.5px]" />} 
             label="Dashboard" 

@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using RMS.Application.Interfaces;
 using RMS.Application.Services;
 using RMS.Infrastructure.Data;
+using RMS.Infrastructure.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +21,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 // Register Application Services
 builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<ProductRepository>();
 
 // Configure JWT Authentication
 var secretKey = builder.Configuration["JwtSettings:Secret"] ?? "super-secret-key-that-should-be-very-long-and-secure-1234567890";

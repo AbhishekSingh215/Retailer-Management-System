@@ -131,6 +131,54 @@ const SalesEntry: React.FC = () => {
 
   // Current scanned item state (Input Form)
   const [barcodeInput, setBarcodeInput] = useState('');
+  const [isScanningItem, setIsScanningItem] = useState(false);
+
+  // Handle Barcode Scan Logic
+  const handleBarcodeScan = async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      if (!barcodeInput.trim()) return;
+
+      setIsScanningItem(true);
+      try {
+        // Using the port from your terminal: http://localhost:5143
+        const response = await fetch(`http://localhost:5143/api/product/scan/${barcodeInput}`);
+
+        if (!response.ok) {
+          throw new Error('Product not found');
+        }
+
+        const data = await response.json();
+
+        // Map backend DTO to frontend LineItem
+        const newItem: LineItem = {
+          id: Date.now().toString(),
+          barcode: data.barcodedesc,
+          sourceCode: data.barcodeSourceBarcode,
+          productCode: data.productCode,
+          color: data.colorName,
+          isIndividual: data.productIndividualBarcode === "YES" || data.productIndividualBarcode === true,
+          category: data.categoryDescription,
+          size: data.barcodeSize,
+          mrp: data.barcodeMrp,
+          selPrice: data.barcodeSelPrice,
+          discount: data.barcodeMrp - data.barcodeSelPrice,
+          hsn: data.hsnCode,
+          taxDesc: 'GST 5%', // Placeholder as requested
+          taxAmt: 0,
+          qty: 1,
+          amount: data.barcodeSelPrice
+        };
+
+        setItems(prev => [...prev, newItem]);
+        setBarcodeInput(''); // Clear for next scan
+      } catch (error) {
+        console.error('Scan failed:', error);
+        alert('Product not found in inventory!');
+      } finally {
+        setIsScanningItem(false);
+      }
+    }
+  };
 
   // State for bill details popover
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
@@ -195,128 +243,173 @@ const SalesEntry: React.FC = () => {
         <LayoutToggle />
       </div>
 
-      {/* Classic Single-Row Header (Inputs) */}
-      <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-4 flex flex-wrap items-center gap-6 shadow-sm shrink-0 relative z-[50]">
-        <div className="flex flex-col gap-1.5 min-w-[150px]">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><FileText className="w-3 h-3" /> Doc No.</span>
-          <div className="px-4 py-2.5 bg-slate-50/50 dark:bg-white/[0.05] border border-slate-100 dark:border-white/[0.1] rounded-xl text-[13px] font-black text-slate-500">{docNo}</div>
-        </div>
-        <div className="flex flex-col gap-1.5 min-w-[150px]">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><Calendar className="w-3 h-3" /> Date</span>
-          <div className="px-4 py-2.5 bg-white dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-black text-slate-700 dark:text-white/80">{docDate}</div>
-        </div>
-        <div className="flex-1 flex flex-col gap-1.5 min-w-[250px]">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><Search className="w-3 h-3" /> Customer Mobile</span>
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search mobile..."
-              value={mobileNumber}
-              onChange={(e) => setMobileNumber(e.target.value)}
-              onFocus={() => searchResults.length > 0 && setShowResults(true)}
-              onBlur={() => setTimeout(() => setShowResults(false), 200)}
-              className="w-full px-5 py-2.5 bg-white dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-black focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all placeholder-slate-300"
-            />
-            <button className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 bg-indigo-600 text-white rounded-lg shadow-lg shadow-indigo-600/20"><Search className="w-4 h-4" /></button>
+      {/* Classic Header & Scanning Section - Compressed for Max Grid Space */}
+      <div className="flex flex-col gap-2 shrink-0 relative z-[50]">
+        {/* Row 1: Invoice & Customer Info - SLIM VERSION */}
+        <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-3 flex flex-wrap items-center gap-4 shadow-sm shrink-0">
+          <div className="flex flex-col gap-1 min-w-[120px]">
+            <span className="text-[9px] font-[1000] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><FileText className="w-3 h-3 text-indigo-600 dark:text-indigo-400" /> Doc No.</span>
+            <div className="px-3 py-1.5 bg-slate-50/50 dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-slate-950 dark:text-white shadow-sm">{docNo}</div>
+          </div>
+          <div className="flex flex-col gap-1 min-w-[120px]">
+            <span className="text-[9px] font-[1000] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><Calendar className="w-3 h-3 text-indigo-600 dark:text-indigo-400" /> Date</span>
+            <div className="px-3 py-1.5 bg-white dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-slate-950 dark:text-white shadow-sm">{docDate}</div>
+          </div>
+          <div className="flex-1 flex flex-col gap-1 min-w-[200px]">
+            <span className="text-[9px] font-[1000] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><Search className="w-3 h-3 text-indigo-600 dark:text-indigo-400" /> Customer Mobile</span>
+            <div className="relative group">
+              <input
+                type="text"
+                placeholder="Search..."
+                value={mobileNumber}
+                onChange={(e) => setMobileNumber(e.target.value)}
+                onFocus={() => searchResults.length > 0 && setShowResults(true)}
+                onBlur={() => setTimeout(() => setShowResults(false), 200)}
+                className="w-full px-4 py-1.5 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-300"
+              />
+              <button className="absolute right-1 top-1/2 -translate-y-1/2 p-1 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg shadow-lg hover:bg-indigo-700"><Search className="w-3.5 h-3.5" /></button>
 
-            {isSearching && (
-              <div className="absolute right-12 top-1/2 -translate-y-1/2">
-                <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+              <AnimatePresence>
+                {showResults && viewMode === 'classic' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
+                  >
+                    {searchResults.map((customer) => (
+                      <button
+                        key={customer.id}
+                        onClick={() => handleCustomerSelect(customer)}
+                        className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
+                      >
+                        <div className="flex flex-col">
+                          <span className="text-[13px] font-black text-gray-900 dark:text-white group-hover:text-indigo-500 transition-colors">{customer.name}</span>
+                          <span className="text-[10px] font-bold text-slate-400">{customer.mobile}</span>
+                        </div>
+                        <span className="text-[11px] font-black text-slate-700 dark:text-white/60">{customer.loyaltyPoints}</span>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+          <div className="flex-[1.5] flex flex-col gap-1">
+            <span className="text-[9px] font-[1000] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><User className="w-3 h-3 text-indigo-600 dark:text-indigo-400" /> Customer Name</span>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 px-4 py-1.5 bg-emerald-50/50 dark:bg-emerald-500/10 border-2 border-emerald-200 dark:border-emerald-500/30 rounded-xl text-[13px] font-[1000] text-emerald-900 dark:text-emerald-300 flex items-center justify-between shadow-sm">
+                {customerName}
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse"></div>
               </div>
-            )}
 
-            {/* Search Results Dropdown (Classic View) */}
-            <AnimatePresence>
-              {showResults && viewMode === 'classic' && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[300px] overflow-y-auto custom-scrollbar"
-                >
-                  {searchResults.map((customer) => (
-                    <button
-                      key={customer.id}
-                      onClick={() => handleCustomerSelect(customer)}
-                      className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-[14px] font-black text-gray-900 dark:text-white group-hover:text-indigo-500 transition-colors">{customer.name}</span>
-                        <span className="text-[11px] font-bold text-slate-400">{customer.mobile}</span>
-                      </div>
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Points</span>
-                        <span className="text-[12px] font-black text-slate-700 dark:text-white/60">{customer.loyaltyPoints}</span>
-                      </div>
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
+              {/* Form Status Badge (Legacy Mode Indicator) */}
+              <div className="px-4 py-1.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl border-2 border-rose-100 dark:border-rose-500/20 shadow-sm flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-500">
+                <div className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]"></div>
+                <span className="text-[12px] font-[1000] uppercase tracking-widest leading-none">LOCK</span>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="flex-[1.5] flex flex-col gap-1.5">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><User className="w-3 h-3" /> Customer Name</span>
-          <div className="px-5 py-2.5 bg-emerald-50 dark:bg-emerald-500/5 border border-emerald-100 dark:border-emerald-500/20 rounded-xl text-[14px] font-black text-emerald-600 dark:text-emerald-400 flex items-center justify-between">
-            {customerName}
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+
+        {/* Row 2: Scanning Command Bar - EVEN SLIMMER */}
+        <div className="bg-white dark:bg-white/[0.03] border-2 border-indigo-100 dark:border-white/[0.08] rounded-2xl p-2 flex items-center gap-4 shadow-lg shadow-indigo-500/5">
+          <div className="flex items-center gap-3 flex-1">
+            <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl border border-indigo-100 dark:border-indigo-500/20">
+              <span className="text-[11px] font-[1000] text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                <div className="w-4 h-4 flex items-center justify-center bg-indigo-600 text-white rounded-lg text-[9px]">1</div>
+                Scancode
+              </span>
+            </div>
+            <div className="flex-1 relative group">
+              <input
+                type="text"
+                placeholder="Scan Barcode or Type Product Code..."
+                autoFocus
+                value={barcodeInput}
+                onChange={(e) => setBarcodeInput(e.target.value)}
+                onKeyDown={handleBarcodeScan}
+                disabled={isScanningItem}
+                className={`w-full px-5 py-2 bg-slate-50 dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-black dark:text-white focus:outline-none focus:border-indigo-600 dark:focus:border-indigo-500 transition-all shadow-inner placeholder:text-slate-300 ${isScanningItem ? 'opacity-50' : ''}`}
+              />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest hidden lg:block">Enter to Bind</span>
+                <button className="p-1 text-slate-400 hover:text-indigo-600 transition-colors">
+                  <Search className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 px-6 border-l-2 border-slate-100 dark:border-white/10">
+            <div className="flex items-center gap-6">
+              <div className="flex flex-col items-end">
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Qty</span>
+                <span className="text-[16px] font-[1000] text-slate-900 dark:text-white leading-none">2.00</span>
+              </div>
+              <div className="w-[1px] h-6 bg-slate-100 dark:bg-white/10"></div>
+              <div className="flex flex-col items-end">
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Amount</span>
+                <span className="text-[16px] font-[1000] text-indigo-600 dark:text-indigo-400 leading-none">700.00</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Classic Wide Grid Table - Now fills all remaining space */}
       <div className="flex-1 bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-3xl shadow-xl overflow-hidden flex flex-col min-h-0">
-        <div ref={classicScrollRef} className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar min-h-0">
-          <table className="w-full min-w-[1800px] border-collapse text-left">
-            <thead className="sticky top-0 bg-slate-50/95 dark:bg-[#0d0d0d]/95 backdrop-blur-md z-10">
-              <tr className="border-b border-slate-200 dark:border-white/[0.1]">
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-16">#</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-48">Barcode</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Source Code</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest flex-1">Product Description</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Category</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Color</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">Size</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-24 text-center">Indiv</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-24 text-center">Qty</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">MRP</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">Sel Price</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">Disc.</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">HSN</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Tax Desc</th>
-                <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32 text-right">Tax Amt</th>
-                <th className="px-6 py-3 text-[10px] font-black text-indigo-500 uppercase tracking-widest w-36 text-right">Net Amount</th>
+        <div ref={classicScrollRef} className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar min-h-0 bg-white dark:bg-transparent">
+          <table className="w-full min-w-[1800px] border-collapse text-left border-spacing-0">
+            <thead className="sticky top-0 z-10 shadow-[0_8px_30px_rgb(79,70,229,0.15)]">
+              <tr className="border-b-0">
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-16 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">#</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest w-48 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Barcode</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-40 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Source Code</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest flex-1 bg-indigo-700 dark:bg-indigo-950 border-r border-indigo-600/30">Product Description</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-40 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Category</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-32 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Color</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-24 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Size</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-24 text-center bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Indiv</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-24 text-center bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Qty</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-32 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">MRP</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-300 uppercase tracking-widest w-32 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Sel Price</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-32 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc.</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-32 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">HSN</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-40 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Desc</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-32 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Amt</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest w-36 text-right bg-indigo-800 dark:bg-indigo-950">Net Amount</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-white/[0.03]">
+            <tbody className="divide-y-2 divide-slate-100 dark:divide-white/[0.03]">
               {items.map((item, index) => (
-                <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.01] transition-colors group">
-                  <td className="px-6 py-3 text-[12px] font-black text-slate-300 dark:text-white/10 group-hover:text-indigo-400 transition-colors">{index + 1}</td>
-                  <td className="px-6 py-3 text-[13px] font-black text-slate-700 dark:text-white/80">{item.barcode}</td>
-                  <td className="px-6 py-3 text-[12px] font-bold text-slate-400">{item.sourceCode}</td>
-                  <td className="px-6 py-3 text-[13px] font-[1000] text-indigo-600 dark:text-indigo-400">{item.productCode}</td>
-                  <td className="px-6 py-3 text-[12px] font-bold text-slate-500 uppercase tracking-wider">{item.category}</td>
-                  <td className="px-6 py-3 text-[12px] font-bold text-slate-500">{item.color}</td>
-                  <td className="px-6 py-3 text-[12px] font-bold text-slate-500">{item.size}</td>
-                  <td className="px-6 py-3 text-center">
+                <tr key={item.id} className="hover:bg-indigo-50/60 dark:hover:bg-indigo-500/10 transition-all group even:bg-slate-50/30 dark:even:bg-white/[0.01]">
+                  <td className="px-6 py-5 text-[12px] font-[1000] text-slate-400 dark:text-white/10 group-hover:text-indigo-600 transition-colors">{index + 1}</td>
+                  <td className="px-6 py-5 text-[14px] font-[1000] text-black dark:text-white group-hover:text-indigo-800 transition-colors tracking-tighter">{item.barcode}</td>
+                  <td className="px-6 py-5 text-[12px] font-[900] text-slate-500">{item.sourceCode}</td>
+                  <td className="px-6 py-5 text-[15px] font-[1000] text-indigo-950 dark:text-indigo-300 tracking-tight leading-tight">{item.productCode}</td>
+                  <td className="px-6 py-5 text-[12px] font-[1000] text-slate-700 uppercase tracking-wide">{item.category}</td>
+                  <td className="px-6 py-5 text-[12px] font-[1000] text-slate-700">{item.color}</td>
+                  <td className="px-6 py-5 text-[12px] font-[1000] text-slate-700">{item.size}</td>
+                  <td className="px-6 py-5 text-center">
                     <div className="flex justify-center">
-                      <input type="checkbox" checked={item.isIndividual} readOnly className="w-4 h-4 rounded border-slate-200 text-indigo-600 focus:ring-indigo-500/20" />
+                      <input type="checkbox" checked={item.isIndividual} readOnly className="w-5 h-5 rounded border-2 border-slate-500 text-indigo-800 focus:ring-indigo-500/20 transition-all cursor-not-allowed" />
                     </div>
                   </td>
-                  <td className="px-6 py-3 text-center">
+                  <td className="px-6 py-5 text-center">
                     <div className="flex justify-center">
-                      <span className="px-3 py-1 bg-slate-50 dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.1] rounded-lg text-[13px] font-black text-slate-700 dark:text-white/80">
+                      <span className="px-4 py-2 bg-white dark:bg-white/[0.05] border-2 border-slate-400 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-black dark:text-white shadow-md ring-2 ring-slate-100/50">
                         {item.qty}
                       </span>
                     </div>
                   </td>
-                  <td className="px-6 py-3 text-[13px] font-bold text-slate-400 text-right">₹{item.mrp.toFixed(0)}</td>
-                  <td className="px-6 py-3 text-[14px] font-black text-gray-900 dark:text-white text-right">₹{item.selPrice.toFixed(0)}</td>
-                  <td className="px-6 py-3 text-[13px] font-black text-rose-500 text-right">-₹{item.discount.toFixed(0)}</td>
-                  <td className="px-6 py-3 text-[12px] font-bold text-slate-400">{item.hsn}</td>
-                  <td className="px-6 py-3 text-[12px] font-bold text-slate-400">{item.taxDesc}</td>
-                  <td className="px-6 py-3 text-[13px] font-bold text-slate-500 text-right">₹{item.taxAmt.toFixed(0)}</td>
-                  <td className="px-6 py-3 text-[15px] font-[1000] text-indigo-600 dark:text-indigo-400 text-right">₹{item.amount.toFixed(0)}</td>
+                  <td className="px-6 py-5 text-[14px] font-[900] text-slate-500 text-right">₹{item.mrp.toLocaleString()}</td>
+                  <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right">₹{item.selPrice.toLocaleString()}</td>
+                  <td className="px-6 py-5 text-[14px] font-[1000] text-rose-700 text-right">-₹{item.discount.toLocaleString()}</td>
+                  <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.hsn}</td>
+                  <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.taxDesc}</td>
+                  <td className="px-6 py-5 text-[13px] font-[900] text-slate-600 text-right">₹{item.taxAmt.toLocaleString()}</td>
+                  <td className="px-6 py-5 text-[19px] font-[1000] text-indigo-950 dark:text-indigo-200 text-right bg-indigo-100/40 dark:bg-indigo-500/10 border-l border-indigo-200/50">₹{item.amount.toLocaleString()}</td>
                 </tr>
               ))}
               {/* Pro Scan Row */}
@@ -354,31 +447,31 @@ const SalesEntry: React.FC = () => {
                 {/* --- Header Section (Customer & Doc Info) --- */}
                 <div className="px-6 py-2 shrink-0 relative z-[50]">
                   <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-4 shadow-sm backdrop-blur-xl">
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
-                          <User className="w-5 h-5" />
+                        <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+                          <User className="w-3.5 h-3.5" />
                         </div>
                         <div>
-                          <h2 className="text-[15px] font-black text-gray-900 dark:text-white tracking-tight leading-tight">Customer Details</h2>
+                          <h2 className="text-[12px] font-extrabold text-gray-900 dark:text-white tracking-tight leading-tight uppercase">Customer Details</h2>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-white/[0.05] rounded-lg border border-slate-100 dark:border-white/[0.08]">
-                          <FileText className="w-3.5 h-3.5 text-indigo-400" />
-                          <span className="text-[12px] font-black text-slate-600 dark:text-white/60 tracking-tight">{docNo}</span>
+                        <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-50 dark:bg-white/[0.05] rounded-lg border border-slate-100 dark:border-white/[0.08]">
+                          <FileText className="w-3 h-3 text-indigo-400" />
+                          <span className="text-[10px] font-extrabold text-slate-500 dark:text-white/40 tracking-tight">{docNo}</span>
                         </div>
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-100 dark:border-indigo-500/20">
-                          <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                          <span className="text-[12px] font-black text-indigo-600 dark:text-indigo-400 tracking-tight">{docDate}</span>
+                        <div className="flex items-center gap-2 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 rounded-lg border border-indigo-100 dark:border-indigo-500/20">
+                          <Calendar className="w-3 h-3 text-indigo-500" />
+                          <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 tracking-tight">{docDate}</span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                       <div className="space-y-1 relative group col-span-1 md:col-span-2">
-                        <label className="text-[10px] font-black text-gray-400 dark:text-white/30 flex items-center gap-2 uppercase tracking-[0.2em] ml-1">
-                          <Search className="w-3 h-3" /> Mobile Number
+                        <label className="text-[8px] font-extrabold text-gray-400 dark:text-white/20 flex items-center gap-2 uppercase tracking-[0.2em] ml-1">
+                          <Search className="w-3 h-3 text-indigo-400" /> Mobile
                         </label>
                         <div className="relative">
                           <input
@@ -387,12 +480,12 @@ const SalesEntry: React.FC = () => {
                             onChange={(e) => setMobileNumber(e.target.value)}
                             onFocus={() => searchResults.length > 0 && setShowResults(true)}
                             onBlur={() => setTimeout(() => setShowResults(false), 200)}
-                            placeholder="Search mobile..."
-                            className="w-full bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-[14px] font-bold rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 transition-all"
+                            placeholder="Search..."
+                            className="w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-100 dark:border-white/[0.1] text-gray-900 dark:text-white text-[12px] font-extrabold rounded-xl px-4 py-1.5 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner"
                           />
                           {isSearching && (
                             <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                              <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                              <div className="w-3.5 h-3.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                             </div>
                           )}
 
@@ -428,11 +521,18 @@ const SalesEntry: React.FC = () => {
                       </div>
 
                       <div className="space-y-1 col-span-1 md:col-span-2">
-                        <label className="text-[10px] font-black text-gray-400 dark:text-white/30 flex items-center gap-2 uppercase tracking-[0.2em] ml-1">
-                          <User className="w-3 h-3" /> Customer Name
+                        <label className="text-[8px] font-extrabold text-gray-400 dark:text-white/20 flex items-center gap-2 uppercase tracking-[0.2em] ml-1">
+                          <User className="w-3 h-3 text-indigo-400" /> Customer Name
                         </label>
-                        <div className="w-full bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[14px] font-black rounded-xl px-4 py-2.5 flex items-center justify-between">
-                          <span>{customerName}</span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 bg-emerald-50/50 dark:bg-emerald-500/5 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[12px] font-extrabold rounded-xl px-4 py-1.5 flex items-center justify-between shadow-sm">
+                            <span>{customerName}</span>
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/40 animate-pulse"></div>
+                          </div>
+                          <div className="px-3 py-1.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl border border-rose-100 dark:border-rose-500/20 text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                            <div className="w-1.5 h-1.5 rounded-full bg-rose-500 shadow-[0_0_5px_rgba(244,63,94,0.4)]"></div>
+                            LOCK
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -442,17 +542,23 @@ const SalesEntry: React.FC = () => {
                 {/* --- Product Entry Section --- */}
                 <div className="px-6 py-2 flex-1 flex flex-col min-h-0">
                   <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-4 shadow-sm flex-1 flex flex-col backdrop-blur-xl overflow-hidden">
-                    <div className="mb-4 shrink-0">
+                    <div className="mb-4 shrink-0 flex flex-col gap-2">
+                      <div className="flex items-center gap-2 ml-1">
+                        <div className="w-4 h-4 flex items-center justify-center bg-indigo-600 text-white rounded text-[8px] font-black">1</div>
+                        <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Scancode</span>
+                      </div>
                       <div className="relative group">
                         <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                          <Barcode className="h-6 w-6 text-indigo-400 dark:text-blue-400 group-focus-within:text-indigo-600 transition-colors" />
+                          <Barcode className="h-5 w-5 text-indigo-400 dark:text-blue-400 group-focus-within:text-indigo-600 transition-colors" />
                         </div>
                         <input
                           type="text"
                           value={barcodeInput}
                           onChange={(e) => setBarcodeInput(e.target.value)}
-                          placeholder="Scan Barcode or Search..."
-                          className="w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-100 dark:border-white/[0.1] text-gray-900 dark:text-white text-[16px] font-black rounded-2xl pl-14 pr-24 py-4 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner"
+                          onKeyDown={handleBarcodeScan}
+                          disabled={isScanningItem}
+                          placeholder={isScanningItem ? "Searching..." : "Scan Barcode or Search..."}
+                          className={`w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-100 dark:border-white/[0.1] text-gray-900 dark:text-white text-[14px] font-extrabold rounded-2xl pl-12 pr-24 py-3 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner ${isScanningItem ? 'animate-pulse' : ''}`}
                         />
                       </div>
                     </div>
@@ -462,15 +568,15 @@ const SalesEntry: React.FC = () => {
                         <div className="bg-slate-50/50 dark:bg-white/[0.02] p-4 border-b border-slate-100 dark:border-white/[0.08] flex flex-col gap-3 shrink-0">
                           <div className="flex justify-between items-start">
                             <div className="space-y-1">
-                              <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[9px] font-black rounded-full uppercase tracking-wider">
+                              <div className="inline-flex items-center gap-2 px-2 py-0.5 bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-[8px] font-extrabold rounded-full uppercase tracking-[0.2em]">
                                 <Tag className="w-2.5 h-2.5" /> Selected Product
                               </div>
-                              <h3 className="text-[17px] font-black text-gray-900 dark:text-white tracking-tight">Premium Cotton T-Shirt</h3>
+                              <h3 className="text-[16px] font-extrabold text-gray-900 dark:text-white tracking-tight">Premium Cotton T-Shirt</h3>
                             </div>
                             <div className="text-right">
-                              <span className="text-[9px] font-black text-gray-400 dark:text-white/30 uppercase tracking-[0.2em] mb-1 block">Standard MRP</span>
-                              <div className="bg-indigo-600 px-3 py-1 rounded-lg shadow-lg">
-                                <p className="text-[16px] font-black text-white leading-none">₹1,200</p>
+                              <span className="text-[8px] font-extrabold text-gray-400 dark:text-white/20 uppercase tracking-[0.25em] mb-1 block">Standard MRP</span>
+                              <div className="bg-indigo-600 px-3 py-1 rounded-lg shadow-lg shadow-indigo-600/20">
+                                <p className="text-[15px] font-extrabold text-white leading-none">₹1,200</p>
                               </div>
                             </div>
                           </div>
@@ -520,8 +626,8 @@ const SalesEntry: React.FC = () => {
                               />
                             </div>
                             <div className="space-y-1.5">
-                              <label className="text-[11px] font-black text-gray-500 dark:text-white/40 uppercase tracking-widest ml-1">Final Price</label>
-                              <div className="w-full bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[18px] font-black rounded-xl px-4 py-3.5 text-center shadow-inner">
+                              <label className="text-[10px] font-extrabold text-gray-500 dark:text-white/30 uppercase tracking-widest ml-1">Final Price</label>
+                              <div className="w-full bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[16px] font-extrabold rounded-xl px-4 py-3 text-center shadow-inner">
                                 ₹999.00
                               </div>
                             </div>
@@ -529,8 +635,8 @@ const SalesEntry: React.FC = () => {
                         </div>
 
                         <div className="p-4 pt-2 shrink-0">
-                          <button className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white text-[16px] font-black rounded-xl shadow-lg flex items-center justify-center gap-3 transition-all transform active:scale-[0.98]">
-                            <Plus className="w-5 h-5 stroke-[3px]" /> Add to Sale (₹999.00)
+                          <button className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white text-[15px] font-extrabold rounded-xl shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-3 transition-all transform active:scale-[0.98] uppercase tracking-wider">
+                            <Plus className="w-4 h-4 stroke-[3px]" /> Add to Sale (₹999.00)
                           </button>
                         </div>
                       </div>
@@ -547,29 +653,29 @@ const SalesEntry: React.FC = () => {
                 <div className="px-6 py-5 border-b border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] shrink-0">
                   <div className="flex justify-between items-center mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
-                        <ShoppingCart className="w-4 h-4" />
+                      <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+                        <ShoppingCart className="w-3.5 h-3.5" />
                       </div>
-                      <h3 className="text-[14px] font-black text-gray-900 dark:text-white uppercase tracking-wider">Current Sale</h3>
+                      <h3 className="text-[12px] font-extrabold text-gray-900 dark:text-white uppercase tracking-wider">Current Sale</h3>
                     </div>
-                    <div className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1 rounded-full text-[12px] font-black border border-indigo-100 dark:border-indigo-500/20">
+                    <div className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1 rounded-full text-[10px] font-extrabold border border-indigo-100 dark:border-indigo-500/20 uppercase tracking-widest">
                       {items.length} Items
                     </div>
                   </div>
 
                   <div className="relative group">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Search in cart (Name, Code, Barcode)..."
+                      placeholder="Search in cart..."
                       value={cartSearch}
                       onChange={(e) => setCartSearch(e.target.value)}
-                      className="w-full bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.1] rounded-xl pl-9 pr-4 py-2.5 text-[12px] font-bold outline-none focus:bg-white dark:focus:bg-white/[0.05] focus:border-indigo-400 transition-all shadow-inner"
+                      className="w-full bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.1] rounded-xl pl-9 pr-4 py-2 text-[11px] font-semibold outline-none focus:bg-white dark:focus:bg-white/[0.05] focus:border-indigo-400 transition-all shadow-inner"
                     />
                   </div>
                 </div>
 
-                <div className="px-6 py-2 bg-slate-100/80 dark:bg-white/[0.02] border-b border-slate-200 dark:border-white/[0.05] flex text-[10px] font-black text-gray-400 dark:text-white/30 uppercase tracking-[0.2em] shrink-0">
+                <div className="px-6 py-2 bg-slate-50/50 dark:bg-white/[0.02] border-b border-slate-200 dark:border-white/[0.05] flex text-[9px] font-extrabold text-gray-400 dark:text-white/20 uppercase tracking-[0.25em] shrink-0">
                   <div className="w-8">#</div>
                   <div className="flex-1">Item Description</div>
                   <div className="w-16 text-center">Qty</div>
@@ -585,16 +691,16 @@ const SalesEntry: React.FC = () => {
                   ) : (
                     filteredItems.map((item, index) => (
                       <div key={item.id} className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.03] hover:bg-slate-50/50 dark:hover:bg-white/[0.01] transition-colors group relative flex items-center gap-3">
-                        <div className="w-8 text-[11px] font-black text-slate-300 dark:text-white/10">{index + 1}</div>
+                        <div className="w-8 text-[11px] font-bold text-slate-300 dark:text-white/10">{index + 1}</div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-[14px] font-black text-gray-900 dark:text-white leading-tight truncate">{item.productCode}</h4>
+                          <h4 className="text-[13px] font-extrabold text-gray-900 dark:text-white leading-tight truncate">{item.productCode}</h4>
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold text-indigo-500/70 uppercase">{item.barcode}</span>
-                            <span className="text-[10px] font-medium text-slate-400 uppercase">{item.size}/{item.color}</span>
+                            <span className="text-[9px] font-bold text-indigo-500/70 uppercase tracking-wider">{item.barcode}</span>
+                            <span className="text-[9px] font-semibold text-slate-400 uppercase">{item.size}/{item.color}</span>
                           </div>
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold text-slate-300 dark:text-white/20 line-through">₹{item.mrp}</span>
-                            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">₹{item.selPrice} / unit</span>
+                            <span className="text-[9px] font-bold text-slate-300 dark:text-white/20 line-through">₹{item.mrp.toLocaleString()}</span>
+                            <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">₹{item.selPrice.toLocaleString()} / unit</span>
                           </div>
                         </div>
                         <div className="w-16 text-center">
@@ -603,11 +709,11 @@ const SalesEntry: React.FC = () => {
                           </div>
                         </div>
                         <div className="w-24 text-right flex flex-col items-end">
-                          <p className="text-[14px] font-black text-gray-900 dark:text-white leading-none">₹{item.amount.toFixed(0)}</p>
+                          <p className="text-[13px] font-extrabold text-gray-900 dark:text-white leading-none">₹{item.amount.toLocaleString()}</p>
                         </div>
                         <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1">
                           <button className="p-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-100 transition-all">
-                             <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
