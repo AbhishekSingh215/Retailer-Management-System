@@ -12,8 +12,7 @@ import {
   BarChart3,
   Tags,
   Users,
-  User,
-  Mail
+  User
 } from 'lucide-react';
 import ThemeToggle from '../../components/ThemeToggle';
 
@@ -52,6 +51,11 @@ const Login: React.FC = () => {
       if (response.ok && data.success) {
         // Store JWT token securely
         localStorage.setItem('token', data.token);
+        localStorage.setItem('companyId', data.companyId || '1');
+        localStorage.setItem('companyName', data.companyName || 'Default Company');
+        localStorage.setItem('companyCount', data.companyCount || '1');
+        if (data.finFromDate) localStorage.setItem('finFromDate', data.finFromDate);
+        if (data.finToDate) localStorage.setItem('finToDate', data.finToDate);
 
         // Success! Redirect to dashboard using React Router
         setTimeout(() => {

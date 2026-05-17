@@ -8,7 +8,14 @@ namespace RMS.Application.Interfaces;
 public interface IApplicationDbContext
 {
     DbSet<MasterUser> MasterUsers { get; set; }
-    // Add other DbSets as needed for the application layer
+    DbSet<CompanyProfile> CompanyProfiles { get; set; }
+    DbSet<Purchase> Purchases { get; set; }
+    DbSet<PurchaseTrn> PurchaseTrns { get; set; }
     DbSet<Customer> Customers { get; set; } 
+    DbSet<BarcodeDetail> BarcodeDetails { get; set; }
+    DbSet<ProductMaster> ProductMasters { get; set; }
+    DbSet<Category> Categories { get; set; }
+    DbSet<Color> Colors { get; set; }
+    DbSet<Hsn> Hsns { get; set; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

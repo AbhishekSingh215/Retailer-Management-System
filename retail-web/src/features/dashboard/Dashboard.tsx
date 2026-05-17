@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import { 
   TrendingUp, 
   ShoppingBag, 
@@ -37,10 +36,8 @@ const Dashboard: React.FC = () => {
   const [userName, setUserName] = useState('Admin');
 
   useEffect(() => {
-    // How Front-End binding works (Learning moment):
-    // After login, we can fetch real user data from our backend using the token we stored.
-    // For now, we simulate grabbing the username from the token payload or localStorage if we had stored it.
-    // In a real app: fetch('/api/user/me', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+    const storedName = localStorage.getItem('companyName');
+    if (storedName) setUserName(storedName);
   }, []);
 
   return (

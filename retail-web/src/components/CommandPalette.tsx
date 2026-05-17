@@ -5,10 +5,8 @@ import {
   Search, 
   Store, 
   LayoutDashboard, 
-  PackageSearch, 
   Users, 
   Settings,
-  X,
   ArrowRight
 } from 'lucide-react';
 

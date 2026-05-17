@@ -72,12 +72,27 @@ public class AuthService : IAuthService
         var token = tokenHandler.CreateToken(tokenDescriptor);
         var jwtToken = tokenHandler.WriteToken(token);
 
+        // Fetch active Company Profile (e.g. IsMainCompany == true, or first available)
+        var company = await _context.CompanyProfiles.FirstOrDefaultAsync(c => c.IsMainCompany == true) 
+                      ?? await _context.CompanyProfiles.FirstOrDefaultAsync();
+
+        long companyId = company?.CompanyId ?? 1;
+        string companyName = company?.CompanyName ?? "Default Company";
+        string companyCount = company?.CompanyCount ?? "1";
+        DateTime? finFrom = company?.CompanyFinFromDate ?? new DateTime(DateTime.UtcNow.Year, 4, 1);
+        DateTime? finTo = company?.CompanyFinToDate ?? new DateTime(DateTime.UtcNow.Year + 1, 3, 31);
+
         return new AuthResponse
         {
             Success = true,
             Token = jwtToken,
             UserId = user.UserId,
             UserName = user.UserName ?? "User",
+            CompanyId = companyId,
+            CompanyName = companyName,
+            CompanyCount = companyCount,
+            FinFromDate = finFrom,
+            FinToDate = finTo,
             Message = "Login successful"
         };
     }
