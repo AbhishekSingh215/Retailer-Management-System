@@ -50,12 +50,34 @@ namespace RMS.API.Controllers
                     query = query.Where(t => t.PurtPurId != currentPurId.Value);
                 }
 
-                var totals = await query
-                    .Where(t => t.PurtBarcodeId == result.BarcodeId || (t.PurtBarcodeId == null && t.PurtSourcecode == result.BarcodeSourceBarcode))
+                decimal stockDebit = 0;
+                decimal stockCredit = 0;
+
+                var barcodeId = result.BarcodeId;
+                var sourceBarcode = result.BarcodeSourceBarcode;
+
+                // Query 1: By barcode ID
+                var totals1 = await query
+                    .Where(t => t.PurtBarcodeId == barcodeId)
                     .Select(t => new { Debit = t.PurtDebitQty, Credit = t.PurtCreditQty })
                     .ToListAsync();
 
-                result.AvailableStock = totals.Sum(x => (x.Debit ?? 0) - (x.Credit ?? 0));
+                stockDebit += totals1.Sum(x => x.Debit ?? 0);
+                stockCredit += totals1.Sum(x => x.Credit ?? 0);
+
+                // Query 2: By source code where Barcode ID is null
+                if (!string.IsNullOrEmpty(sourceBarcode))
+                {
+                    var totals2 = await query
+                        .Where(t => t.PurtBarcodeId == null && t.PurtSourcecode == sourceBarcode)
+                        .Select(t => new { Debit = t.PurtDebitQty, Credit = t.PurtCreditQty })
+                        .ToListAsync();
+
+                    stockDebit += totals2.Sum(x => x.Debit ?? 0);
+                    stockCredit += totals2.Sum(x => x.Credit ?? 0);
+                }
+
+                result.AvailableStock = stockDebit - stockCredit;
 
                 // If product has an HSN code, lookup the applicable GST tax rates
                 if (result.HsnId.HasValue && result.HsnId.Value > 0)

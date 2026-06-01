@@ -1,50 +1,53 @@
-using Dapper;
-using Microsoft.Data.SqlClient;
-using RMS.Application.DTOs;
-using Microsoft.Extensions.Configuration;
+using System;
+using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using RMS.Application.DTOs;
+using RMS.Application.Interfaces;
 
 namespace RMS.Infrastructure.Repositories
 {
     public class ProductRepository
     {
-        private readonly string _connectionString;
-        
-        public ProductRepository(IConfiguration configuration) 
+        private readonly IApplicationDbContext _context;
+
+        public ProductRepository(IApplicationDbContext context)
         {
-            // Using the exact same connection string logic as your Program.cs
-            _connectionString = "Server=STATICABHI;Database=Parichay;Trusted_Connection=True;TrustServerCertificate=True";
+            _context = context;
         }
 
-        public async Task<BarcodeScanResponse> GetProductByScancodeAsync(string scancode)
+        public async Task<BarcodeScanResponse?> GetProductByScancodeAsync(string scancode)
         {
-            using (var connection = new SqlConnection(_connectionString))
-            {
-                const string sql = @"
-                    SELECT TOP 1
-                        bd.BarcodeDesc as Barcodedesc, 
-                        bd.BarcodeSourceBarcode, 
-                        pm.ProductCode, 
-                        c.CategoryDescription,
-                        cl.ColorName, 
-                        bd.BarcodeSize, 
-                        pm.ProductIndividualBarcode, 
-                        bd.BarcodeMrp, 
-                        bd.BarcodeSelPrice,
-                        pm.ProductHsnId as HsnId,
-                        h.HsnCode as HsnCode,
-                        bd.BarcodeId as BarcodeId,
-                        COALESCE(pm.ProductNoStockChecking, 0) as ProductNoStockChecking
-                    FROM BarcodeDetails bd
-                    LEFT JOIN ProductMaster pm ON pm.ProductId = bd.BarcodeProductId
-                    LEFT JOIN Category c ON c.CategoryID = pm.ProductCtId
-                    LEFT JOIN Colors cl ON cl.ColorId = bd.BarcodeColorId
-                    LEFT JOIN Hsn h ON h.HsnId = pm.ProductHsnId
-                    WHERE bd.BarcodeDesc = @scancode OR bd.BarcodeSourceBarcode = @scancode
-                    ORDER BY (CASE WHEN bd.BarcodeDesc = @scancode THEN 0 ELSE 1 END)";
+            var query = from bd in _context.BarcodeDetails
+                        join pm in _context.ProductMasters on bd.BarcodeProductId equals pm.ProductId into pmGroup
+                        from pm in pmGroup.DefaultIfEmpty()
+                        join c in _context.Categories on pm.ProductCtId equals c.CategoryId into cGroup
+                        from c in cGroup.DefaultIfEmpty()
+                        join cl in _context.Colors on bd.BarcodeColorId equals cl.ColorId into clGroup
+                        from cl in clGroup.DefaultIfEmpty()
+                        join h in _context.Hsns on pm.ProductHsnId equals h.HsnId into hGroup
+                        from h in hGroup.DefaultIfEmpty()
+                        where bd.BarcodeDesc == scancode || bd.BarcodeSourceBarcode == scancode
+                        orderby bd.BarcodeDesc == scancode ? 0 : 1
+                        select new BarcodeScanResponse
+                        {
+                            Barcodedesc = bd.BarcodeDesc ?? "",
+                            BarcodeSourceBarcode = bd.BarcodeSourceBarcode ?? "",
+                            ProductCode = pm != null ? (pm.ProductCode ?? "") : "",
+                            CategoryDescription = c != null ? (c.CategoryDescription ?? "") : "General",
+                            ColorName = cl != null ? (cl.ColorName ?? "") : "N/A",
+                            BarcodeSize = bd.BarcodeSize ?? "Free",
+                            ProductIndividualBarcode = pm != null ? (pm.ProductIndividualBarcode == true ? "YES" : "NO") : "NO",
+                            BarcodeMrp = bd.BarcodeMrp ?? 0,
+                            BarcodeSelPrice = bd.BarcodeSelPrice ?? 0,
+                            HsnId = pm != null ? pm.ProductHsnId : null,
+                            HsnCode = h != null ? (h.HsnCode ?? "") : "",
+                            BarcodeId = bd.BarcodeId ?? 0,
+                            ProductNoStockChecking = pm != null ? (pm.ProductNoStockChecking == true) : false
+                        };
 
-                return await connection.QueryFirstOrDefaultAsync<BarcodeScanResponse>(sql, new { scancode });
-            }
+            return await query.FirstOrDefaultAsync();
         }
     }
 }
+
