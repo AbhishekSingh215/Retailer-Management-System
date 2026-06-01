@@ -3,6 +3,10 @@ import Login from './features/auth/Login';
 import AppLayout, { ProtectedRoute } from './components/layout/AppLayout';
 import Dashboard from './features/dashboard/Dashboard';
 import SalesEntry from './features/sales/SalesEntry';
+import HsnMaster from './features/masters/HsnMaster';
+import TaxMaster from './features/masters/TaxMaster';
+import Launchpad from './features/dashboard/Launchpad';
+import NotFound from './features/error/NotFound';
 
 function App() {
   return (
@@ -13,8 +17,8 @@ function App() {
           <Route path="/login" element={<Login />} />
 
           {/* Protected Routes inside AppLayout */}
-          <Route 
-            path="/" 
+          <Route
+            path="/"
             element={
               <ProtectedRoute>
                 <AppLayout />
@@ -24,12 +28,16 @@ function App() {
             {/* Default redirect to Dashboard */}
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="launchpad" element={<Launchpad />} />
+            
+            {/* Implemented Features */}
             <Route path="sales" element={<SalesEntry />} />
-            {/* Future routes will go here: <Route path="inventory" element={<Inventory />} /> */}
-          </Route>
+            <Route path="hsn-master" element={<HsnMaster />} />
+            <Route path="tax-master" element={<TaxMaster />} />
 
-          {/* Fallback route */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+            {/* Wildcard 404 Fallback inside shell */}
+            <Route path="*" element={<NotFound />} />
+          </Route>
         </Routes>
       </div>
     </BrowserRouter>

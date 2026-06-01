@@ -6,7 +6,6 @@ import {
   User,
   FileText,
   Calendar,
-  Save,
   X,
   PauseCircle,
   Barcode,
@@ -24,7 +23,8 @@ import {
   AlertTriangle,
   Info,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  UserCheck
 } from 'lucide-react';
 import { useSalesLogic } from './useSalesLogic';
 import { LoadInvoiceModal } from './components/LoadInvoiceModal';
@@ -67,6 +67,7 @@ const SalesEntry: React.FC = () => {
     subtotalExclTax,
     cgstAmount,
     sgstAmount,
+    igstAmount,
     lastScannedItem,
     filteredItems,
     classicScrollRef,
@@ -78,8 +79,29 @@ const SalesEntry: React.FC = () => {
     handleCustomerSelect,
     handleMobileChange,
     handleBarcodeScan,
-    handleRemoveItem
+    handleRemoveItem,
+    handleUpdateQty,
+    handleUpdateItemDiscountPercent,
+    purSalesmanId,
+    setPurSalesmanId,
+    salesmenList,
+    salesmanSearch,
+    setSalesmanSearch,
+    isSalesmanDropdownOpen,
+    setIsSalesmanDropdownOpen,
+    historyPage,
+    hasMoreHistory,
+    isLoadingHistory,
+    totalHistoryRecords,
+    globalDiscountPercent,
+    handleApplyGlobalDiscountPercent,
+    globalDiscountAmount,
+    handleApplyGlobalDiscountAmount,
+    loadingInvoiceId,
+    isSaving
   } = useSalesLogic();
+
+  const totalTaxAmt = cgstAmount + sgstAmount + igstAmount;
 
   // --- CUSTOM DATE PICKER STATE & COMPONENT ---
 
@@ -109,7 +131,7 @@ const SalesEntry: React.FC = () => {
     const month = monthDate.getMonth();
     const firstDay = new Date(year, month, 1).getDay(); // 0 is Sunday
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
+
     const days = [];
     const prevMonthDays = new Date(year, month, 0).getDate();
     for (let i = firstDay - 1; i >= 0; i--) {
@@ -182,15 +204,14 @@ const SalesEntry: React.FC = () => {
                   setDocDate(d.dateStr);
                   onClose();
                 }}
-                className={`h-9 w-full rounded-xl text-[12px] font-[1000] flex items-center justify-center transition-all ${
-                  isSelected
-                    ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-500/30 scale-105 z-10'
-                    : isToday
+                className={`h-9 w-full rounded-xl text-[12px] font-[1000] flex items-center justify-center transition-all ${isSelected
+                  ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-500/30 scale-105 z-10'
+                  : isToday
                     ? 'border-2 border-indigo-500 text-indigo-600 dark:text-indigo-400 font-bold hover:bg-slate-50 dark:hover:bg-white/5'
                     : d.isCurrentMonth
-                    ? 'text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-white/5'
-                    : 'text-slate-300 dark:text-white/20 hover:bg-slate-50 dark:hover:bg-white/[0.02]'
-                }`}
+                      ? 'text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-white/5'
+                      : 'text-slate-300 dark:text-white/20 hover:bg-slate-50 dark:hover:bg-white/[0.02]'
+                  }`}
               >
                 {d.day}
               </button>
@@ -290,34 +311,37 @@ const SalesEntry: React.FC = () => {
     <div className="flex items-center gap-2 ml-auto">
       <button
         onClick={handleNewSale}
-        className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 rounded-xl border border-indigo-200 dark:border-indigo-500/30 text-[11px] font-[1000] flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+        className="px-3.5 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 rounded-xl border border-indigo-200 dark:border-indigo-500/30 text-[12px] font-[1000] flex items-center gap-2 transition-all shadow-sm active:scale-95 whitespace-nowrap"
         title="Start New Sale (F2)"
       >
-        <FilePlus className="w-3.5 h-3.5" /> <span className="hidden sm:inline">New (F2)</span>
+        <FilePlus className="w-4 h-4" /> <span className="hidden sm:inline">New (F2)</span>
       </button>
       <button
         onClick={() => setIsHistoryOpen(true)}
-        className="px-3 py-1.5 bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.1] text-slate-700 dark:text-white/80 rounded-xl border border-slate-200 dark:border-white/[0.1] text-[11px] font-[1000] flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+        className="px-3.5 py-1.5 bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.1] text-slate-700 dark:text-white/80 rounded-xl border border-slate-200 dark:border-white/[0.1] text-[12px] font-[1000] flex items-center gap-2 transition-all shadow-sm active:scale-95 whitespace-nowrap"
         title="Load Past Invoices (F3)"
       >
-        <FolderOpen className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Load (F3)</span>
+        <FolderOpen className="w-4 h-4" /> <span className="hidden sm:inline">Load (F3)</span>
       </button>
+
+      <div className="h-6 w-[1px] bg-slate-200 dark:bg-white/10 mx-1"></div>
+
       {formMode === 'VIEW' ? (
         <button
           onClick={() => setFormMode('EDIT')}
-          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl border border-amber-500 text-[11px] font-[1000] flex items-center gap-1.5 transition-all shadow-sm shadow-amber-600/20 active:scale-95"
-          title="Edit Record"
+          className="px-3.5 py-1.5 bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl border border-amber-200 dark:border-amber-500/30 text-[12px] font-[1000] flex items-center gap-2 transition-all shadow-sm active:scale-95 whitespace-nowrap animate-pulse"
+          title="Edit Invoice"
         >
-          <Edit className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Edit</span>
+          <Edit className="w-4 h-4" /> <span>Edit</span>
         </button>
       ) : (
         <button
           onClick={handleSaveInvoice}
-          disabled={formMode === 'LOCKED'}
-          className={`px-3 py-1.5 rounded-xl border text-[11px] font-[1000] flex items-center gap-1.5 transition-all shadow-sm ${formMode === 'LOCKED' ? 'bg-slate-100 dark:bg-white/[0.02] text-slate-400 border-slate-200 dark:border-white/[0.05] opacity-50 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 shadow-emerald-600/20 active:scale-95'}`}
+          disabled={formMode === 'LOCKED' || items.length === 0 || isSaving}
+          className={`px-3.5 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl border border-emerald-200 dark:border-emerald-500/30 text-[12px] font-[1000] flex items-center gap-2 transition-all shadow-sm active:scale-95 whitespace-nowrap ${formMode === 'LOCKED' || items.length === 0 || isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
           title="Save as Draft (F12)"
         >
-          <Save className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Save as Draft (F12)</span>
+          <PauseCircle className="w-4 h-4" /> <span>{isSaving ? 'Saving...' : 'Save as Draft'}</span>
         </button>
       )}
     </div>
@@ -338,6 +362,12 @@ const SalesEntry: React.FC = () => {
           <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest">Disc.</span>
           <span className="text-[18px] font-[1000] text-rose-500 leading-none">-₹{totalDiscount.toLocaleString()}</span>
         </div>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Tax Amt</span>
+          <span className="text-[18px] font-[1000] text-indigo-500 leading-none" title={`CGST: ₹${cgstAmount.toFixed(2)} | SGST: ₹${sgstAmount.toFixed(2)} | IGST: ₹${igstAmount.toFixed(2)}`}>
+            ₹{totalTaxAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        </div>
         <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Net Payable</span>
@@ -346,13 +376,63 @@ const SalesEntry: React.FC = () => {
             <span className="text-[36px] font-[1000] text-emerald-600 leading-none tracking-tighter">{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
         </div>
+        {(formMode === 'NEW' || formMode === 'EDIT') && (
+          <>
+            <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
+            <div className="flex flex-col gap-0.5 w-[85px] -mt-1">
+              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center">
+                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bulk %
+              </span>
+              <div className="relative mt-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  placeholder="0"
+                  value={globalDiscountPercent || ''}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
+                  }}
+                  disabled={false}
+                  className="w-full pl-2 pr-6 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">%</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-0.5 w-[90px] -mt-1">
+              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center">
+                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bulk Amt
+              </span>
+              <div className="relative mt-1">
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={globalDiscountAmount || ''}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);
+                  }}
+                  disabled={false}
+                  className="w-full pl-5 pr-2 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">₹</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
       <div className="flex gap-3">
         <button onClick={handleNewSale} className="px-6 py-3 bg-slate-100 dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-black hover:bg-slate-200 transition-all flex items-center gap-2 text-slate-600 dark:text-white/60">
           <X className="w-4 h-4" /> Cancel
         </button>
-        <button onClick={handleCompleteSale} disabled={formMode === 'VIEW' || formMode === 'LOCKED'} className={`px-10 py-3 bg-indigo-600 text-white rounded-xl text-[14px] font-[1000] shadow-xl shadow-indigo-600/30 hover:-translate-y-1 hover:bg-indigo-700 transition-all flex items-center gap-2.5 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-50 cursor-not-allowed hover:translate-y-0' : ''}`}>
-          <CheckCircle2 className="w-5 h-5" /> Complete Sale (F10)
+        <button
+          onClick={handleCompleteSale}
+          disabled={formMode === 'VIEW' || formMode === 'LOCKED' || items.length === 0 || isSaving}
+          className={`px-10 py-3 bg-indigo-600 text-white rounded-xl text-[14px] font-[1000] shadow-xl shadow-indigo-600/30 hover:-translate-y-1 hover:bg-indigo-700 transition-all flex items-center gap-2.5 ${formMode === 'VIEW' || formMode === 'LOCKED' || items.length === 0 || isSaving ? 'opacity-50 cursor-not-allowed hover:translate-y-0' : ''}`}
+        >
+          <CheckCircle2 className="w-5 h-5" /> {isSaving ? 'Completing...' : 'Complete Sale (F10)'}
         </button>
       </div>
     </div>
@@ -369,20 +449,20 @@ const SalesEntry: React.FC = () => {
         {/* Row 1: Invoice & Customer Info - SLIM VERSION */}
         <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-3 flex flex-wrap items-center gap-4 shadow-sm shrink-0">
           <div className="flex flex-col gap-1 min-w-[120px]">
-            <span className="text-[9px] font-[1000] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><FileText className="w-3 h-3 text-indigo-600 dark:text-indigo-400" /> Doc No.</span>
-            <div className="px-3 py-1 bg-slate-50 dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-slate-900 dark:text-white shadow-sm flex items-center gap-2">
+            <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Doc No.</span>
+            <div className="px-3 py-1.5 bg-slate-50 dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-slate-900 dark:text-white shadow-sm flex items-center gap-2 min-h-[38px]">
               <span className="text-indigo-600 dark:text-indigo-400">#</span>
               <span>{docNo}</span>
             </div>
           </div>
           <div className="flex flex-col gap-1 min-w-[140px]">
-            <span className="text-[9px] font-[1000] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><Calendar className="w-3 h-3 text-indigo-600 dark:text-indigo-400" /> Date</span>
+            <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2"><Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Date</span>
             <div className="relative">
               <button
                 type="button"
                 onClick={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && setShowDatePicker(prev => !prev)}
                 disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
-                className={`w-full px-3 py-1 bg-white dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-slate-950 dark:text-white shadow-sm outline-none flex items-center justify-between gap-2 focus:border-indigo-500 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-white/10'}`}
+                className={`w-full px-3 py-1.5 bg-white dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-slate-955 dark:text-white shadow-sm outline-none flex items-center justify-between gap-2 focus:border-indigo-500 min-h-[38px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-white/10'}`}
               >
                 <span>{docDate ? new Date(docDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Select Date'}</span>
                 <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
@@ -395,7 +475,7 @@ const SalesEntry: React.FC = () => {
             </div>
           </div>
           <div className="flex-1 flex flex-col gap-1 min-w-[200px]">
-            <span className="text-[9px] font-[1000] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><Search className="w-3 h-3 text-indigo-600 dark:text-indigo-400" /> Customer Mobile</span>
+            <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2"><Search className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Customer Mobile</span>
             <div className="relative group">
               <input
                 type="text"
@@ -435,12 +515,87 @@ const SalesEntry: React.FC = () => {
               </AnimatePresence>
             </div>
           </div>
-          <div className="flex-[1.5] flex flex-col gap-1">
-            <span className="text-[9px] font-[1000] text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] ml-1 flex items-center gap-2"><User className="w-3 h-3 text-indigo-600 dark:text-indigo-400" /> Customer Name</span>
+          <div className="flex-[0.8] flex flex-col gap-1 min-w-[180px]">
+            <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2"><User className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Customer Name</span>
+            <div className="px-4 py-1.5 bg-emerald-50/50 dark:bg-emerald-500/10 border-2 border-emerald-200 dark:border-emerald-500/30 rounded-xl flex items-center justify-between shadow-sm min-h-[38px]">
+              <div className="flex items-center gap-2 min-w-0">
+                <User className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                <span className={`text-[13px] font-[1000] truncate ${customerName ? "text-emerald-950 dark:text-emerald-300" : "text-slate-400 dark:text-white/30"}`}>
+                  {customerName || 'Walk-in Customer'}
+                </span>
+              </div>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse flex-shrink-0"></div>
+            </div>
+          </div>
+
+          <div className="flex-[2.2] flex flex-col gap-1 min-w-[480px] relative">
+            <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
+              <UserCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Salesman
+            </span>
             <div className="flex items-center gap-3">
-              <div className="flex-1 px-4 py-1.5 bg-emerald-50/50 dark:bg-emerald-500/10 border-2 border-emerald-200 dark:border-emerald-500/30 rounded-xl text-[13px] font-[1000] text-emerald-900 dark:text-emerald-300 flex items-center justify-between shadow-sm">
-                {customerName}
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse"></div>
+              <div className="relative flex-1 group">
+                <input
+                  type="text"
+                  placeholder="Type name to search..."
+                  value={salesmanSearch}
+                  onChange={(e) => {
+                    setSalesmanSearch(e.target.value);
+                    if (purSalesmanId) {
+                      setPurSalesmanId(null);
+                    }
+                    setIsSalesmanDropdownOpen(true);
+                  }}
+                  onFocus={() => {
+                    if (formMode !== 'VIEW' && formMode !== 'LOCKED') {
+                      setIsSalesmanDropdownOpen(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setIsSalesmanDropdownOpen(false), 200);
+                  }}
+                  readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
+                  className={`w-full px-4 py-1.5 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-300 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
+                />
+                <AnimatePresence>
+                  {isSalesmanDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
+                    >
+                      {salesmenList
+                        .filter(s =>
+                          (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
+                          (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
+                        )
+                        .map((salesman) => (
+                          <button
+                            key={salesman.id}
+                            type="button"
+                            onClick={() => {
+                              setPurSalesmanId(salesman.id);
+                              setSalesmanSearch(salesman.name);
+                              setIsSalesmanDropdownOpen(false);
+                            }}
+                            className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-[14px] font-black text-gray-900 dark:text-white group-hover:text-indigo-500 transition-colors">{salesman.name}</span>
+                              {salesman.code && <span className="text-[11px] font-bold text-slate-400">{salesman.code}</span>}
+                            </div>
+                          </button>
+                        ))
+                      }
+                      {salesmenList.filter(s =>
+                        (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
+                        (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
+                      ).length === 0 && (
+                          <div className="px-4 py-3 text-slate-400 text-[12px] font-bold">No salesmen found</div>
+                        )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Dynamic Status Badge */}
@@ -517,7 +672,9 @@ const SalesEntry: React.FC = () => {
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-24 text-center bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Qty</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">MRP</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Sel Price</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-24 text-right pr-[33px] bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc %</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc.</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-200 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Rate</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-32 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">HSN</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-40 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Desc</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Amt</th>
@@ -547,23 +704,63 @@ const SalesEntry: React.FC = () => {
                   <td className="px-6 py-5 text-[12px] font-[1000] text-slate-700">{item.size}</td>
                   <td className="px-6 py-5 text-center">
                     <div className="flex justify-center">
-                      <input type="checkbox" checked={item.isIndividual} readOnly className="w-5 h-5 rounded border-2 border-slate-500 text-indigo-800 focus:ring-indigo-500/20 transition-all cursor-not-allowed" />
+                      <div 
+                        className={`w-8 h-4 rounded-full p-0.5 transition-all duration-300 flex items-center ${item.isIndividual ? 'bg-indigo-600 dark:bg-indigo-500' : 'bg-slate-300 dark:bg-slate-700'} cursor-not-allowed`}
+                        title={item.isIndividual ? 'Individual Item' : 'Standard Pack Item'}
+                      >
+                        <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all duration-300 transform ${item.isIndividual ? 'translate-x-3.5' : 'translate-x-0'}`} />
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-5 text-center">
                     <div className="flex justify-center">
-                      <span className="px-4 py-2 bg-white dark:bg-white/[0.05] border-2 border-slate-400 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-black dark:text-white shadow-md ring-2 ring-slate-100/50">
-                        {item.qty}
-                      </span>
+                      {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                        <input
+                          type="number"
+                          value={item.qty === 0 ? '' : item.qty}
+                          disabled={item.isIndividual}
+                          onChange={(e) => handleUpdateQty(item.id, Number(e.target.value))}
+                          className={`w-20 px-3 py-1 bg-white dark:bg-white/[0.05] border-2 ${item.isIndividual ? 'border-slate-200 dark:border-white/[0.05] opacity-50 cursor-not-allowed' : 'border-slate-400 dark:border-white/[0.1] focus:border-indigo-500'} rounded-xl text-[14px] font-[1000] text-center text-black dark:text-white shadow-md focus:outline-none`}
+                          min="1"
+                        />
+                      ) : (
+                        <span className="px-4 py-2 bg-white dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-black dark:text-white shadow-md">
+                          {item.qty}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-5 text-[14px] font-[900] text-slate-500 text-right whitespace-nowrap">₹{item.mrp.toLocaleString()}</td>
                   <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{item.selPrice.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-right whitespace-nowrap">
+                    {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                      <div className="flex items-center justify-end w-full">
+                        <div className="inline-flex items-center justify-between border border-slate-200 dark:border-white/[0.1] rounded-lg bg-slate-50 dark:bg-white/[0.02] px-2 py-1 w-[80px] focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all">
+                          <input
+                            type="number"
+                            value={item.selPrice > 0 ? (item.discount === 0 ? '' : ((item.discount / item.selPrice) * 100).toFixed(2).replace(/\.00$/, '')) : ''}
+                            onChange={(e) => handleUpdateItemDiscountPercent(item.id, Number(e.target.value))}
+                            className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-slate-800 dark:text-slate-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            placeholder="0"
+                          />
+                          <span className="text-[13px] font-bold text-slate-400 dark:text-slate-500 ml-1 select-none">%</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="inline-block text-[13px] font-bold text-slate-750 dark:text-slate-200 pr-[9px]">
+                        {item.selPrice > 0 ? ((item.discount / item.selPrice) * 100).toFixed(2) : '0.00'}%
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-5 text-[14px] font-[1000] text-rose-700 text-right whitespace-nowrap">-₹{item.discount.toLocaleString()}</td>
+                  <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{(item.selPrice - item.discount).toLocaleString()}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.hsn}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.taxDesc}</td>
                   <td className="px-6 py-5 text-[13px] font-[900] text-slate-600 text-right whitespace-nowrap">₹{item.taxAmt.toLocaleString()}</td>
-                  <td className="px-6 py-5 text-[19px] font-[1000] text-indigo-950 dark:text-indigo-200 text-right whitespace-nowrap bg-indigo-100/40 dark:bg-indigo-500/10 border-l border-indigo-200/50">₹{item.amount.toLocaleString()}</td>
+                  <td className="px-6 py-5 text-[19px] font-[1000] text-indigo-950 dark:text-indigo-200 text-right whitespace-nowrap bg-indigo-100/40 dark:bg-indigo-500/10 border-l border-indigo-200/50">₹{(item.amount + (item.taxAmt || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
               ))}
 
@@ -585,33 +782,34 @@ const SalesEntry: React.FC = () => {
               {/* LEFT COLUMN: PRODUCT ENTRY */}
               <div className="w-full lg:flex-[2.5] flex flex-col gap-0 overflow-y-auto custom-scrollbar border-r border-slate-200 dark:border-white/[0.08] bg-slate-50/30 dark:bg-transparent">
 
-                <div className="p-4 pb-0 shrink-0">
+                <div className="p-4 pb-0 shrink-0 flex justify-end">
                   <LayoutToggle />
                 </div>
 
                 {/* --- Header Section (Customer & Doc Info) --- */}
                 <div className="px-6 py-2 shrink-0 relative z-[50]">
                   <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-4 shadow-sm backdrop-blur-xl">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 pb-3 border-b border-slate-100 dark:border-white/[0.05]">
                       <div className="flex items-center gap-3">
-                        <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+                        <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 flex-shrink-0">
                           <User className="w-3.5 h-3.5" />
                         </div>
-                        <div>
-                          <h2 className="text-[12px] font-extrabold text-gray-900 dark:text-white tracking-tight leading-tight uppercase">Customer Details</h2>
+                        <div className="flex items-center gap-2.5">
+                          <h2 className="text-[12.5px] font-black text-gray-900 dark:text-white tracking-tight leading-none uppercase">Customer Details</h2>
+                          <StatusBadge />
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-50 dark:bg-white/[0.05] rounded-lg border border-slate-100 dark:border-white/[0.08]">
-                          <FileText className="w-3 h-3 text-indigo-400" />
-                          <span className="text-[10px] font-extrabold text-slate-500 dark:text-white/40 tracking-tight">{docNo}</span>
+                      <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+                        <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-50 dark:bg-white/[0.05] rounded-lg border border-slate-100 dark:border-white/[0.08] flex-shrink-0">
+                          <FileText className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" />
+                          <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 tracking-tight">{docNo}</span>
                         </div>
-                        <div className="relative">
+                        <div className="relative flex-shrink-0">
                           <button
                             type="button"
                             onClick={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && setShowDatePicker(prev => !prev)}
                             disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
-                            className={`flex items-center gap-2 px-3 py-1 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl border border-indigo-100 dark:border-indigo-500/20 text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 tracking-tight shadow-sm ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all'}`}
+                            className={`flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl border border-indigo-100 dark:border-indigo-500/20 text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 tracking-tight shadow-sm ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all'}`}
                           >
                             <Calendar className="w-3.5 h-3.5 text-indigo-500" />
                             <span>{docDate ? new Date(docDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Select Date'}</span>
@@ -622,13 +820,15 @@ const SalesEntry: React.FC = () => {
                             )}
                           </AnimatePresence>
                         </div>
+                        <div className="hidden md:block h-6 w-[1px] bg-slate-200 dark:bg-white/10 mx-1"></div>
+                        <HeaderActions />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div className="space-y-1 relative group col-span-1 md:col-span-2">
-                        <label className="text-[8px] font-extrabold text-gray-400 dark:text-white/20 flex items-center gap-2 uppercase tracking-[0.2em] ml-1">
-                          <Search className="w-3 h-3 text-indigo-400" /> Mobile
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
+                      <div className="space-y-1 relative group col-span-1 md:col-span-3">
+                        <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
+                          <Search className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" /> Mobile
                         </label>
                         <div className="relative">
                           <input
@@ -639,7 +839,7 @@ const SalesEntry: React.FC = () => {
                             onFocus={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && searchResults.length > 0 && setShowResults(true)}
                             onBlur={() => setTimeout(() => setShowResults(false), 200)}
                             placeholder="Search..."
-                            className={`w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-100 dark:border-white/[0.1] text-gray-900 dark:text-white text-[12px] font-extrabold rounded-xl px-4 py-1.5 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-100 dark:bg-white/[0.01]' : ''}`}
+                            className={`w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-[13px] font-[1000] rounded-xl px-4 py-1.5 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-100 dark:bg-white/[0.01]' : ''}`}
                           />
                           {isSearching && (
                             <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -678,17 +878,89 @@ const SalesEntry: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="space-y-1 col-span-1 md:col-span-2">
-                        <label className="text-[8px] font-extrabold text-gray-400 dark:text-white/20 flex items-center gap-2 uppercase tracking-[0.2em] ml-1">
-                          <User className="w-3 h-3 text-indigo-400" /> Customer Name
+                      <div className="space-y-1 col-span-1 md:col-span-4 relative">
+                        <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
+                          <UserCheck className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" /> Salesman
                         </label>
-                        <div className="flex items-center gap-3">
-                          <div className="flex-1 bg-emerald-50/50 dark:bg-emerald-500/5 border border-emerald-100 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[12px] font-extrabold rounded-xl px-4 py-1.5 flex items-center justify-between shadow-sm">
-                            <span>{customerName}</span>
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/40 animate-pulse"></div>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Type name to search..."
+                            value={salesmanSearch}
+                            onChange={(e) => {
+                              setSalesmanSearch(e.target.value);
+                              if (purSalesmanId) {
+                                setPurSalesmanId(null);
+                              }
+                              setIsSalesmanDropdownOpen(true);
+                            }}
+                            onFocus={() => {
+                              if (formMode !== 'VIEW' && formMode !== 'LOCKED') {
+                                setIsSalesmanDropdownOpen(true);
+                              }
+                            }}
+                            onBlur={() => {
+                              setTimeout(() => setIsSalesmanDropdownOpen(false), 200);
+                            }}
+                            readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
+                            className={`w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-[13px] font-[1000] rounded-xl px-4 py-1.5 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-100 dark:bg-white/[0.01]' : ''}`}
+                          />
+                          <AnimatePresence>
+                            {isSalesmanDropdownOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
+                              >
+                                {salesmenList
+                                  .filter(s =>
+                                    (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
+                                    (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
+                                  )
+                                  .map((salesman) => (
+                                    <button
+                                      key={salesman.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setPurSalesmanId(salesman.id);
+                                        setSalesmanSearch(salesman.name);
+                                        setIsSalesmanDropdownOpen(false);
+                                      }}
+                                      className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
+                                    >
+                                      <div className="flex flex-col">
+                                        <span className="text-[14px] font-black text-gray-900 dark:text-white group-hover:text-indigo-500 transition-colors">{salesman.name}</span>
+                                        {salesman.code && <span className="text-[11px] font-bold text-slate-400">{salesman.code}</span>}
+                                      </div>
+                                    </button>
+                                  ))
+                                }
+                                {salesmenList.filter(s =>
+                                  (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
+                                  (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
+                                ).length === 0 && (
+                                    <div className="px-4 py-3 text-slate-400 text-[12px] font-bold">No salesmen found</div>
+                                  )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+
+
+                      <div className="space-y-1 col-span-1 md:col-span-5">
+                        <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
+                          <User className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" /> Customer Name
+                        </label>
+                        <div className="bg-emerald-50/50 dark:bg-emerald-500/5 border-2 border-emerald-200 dark:border-emerald-500/30 rounded-xl px-4 py-1.5 flex items-center justify-between shadow-sm min-h-[38px] w-full">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <User className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                            <span className={`text-[13px] font-[1000] truncate ${customerName ? "text-emerald-950 dark:text-emerald-300" : "text-slate-400 dark:text-white/30"}`}>
+                              {customerName || 'Walk-in Customer'}
+                            </span>
                           </div>
-                          <StatusBadge />
-                          <HeaderActions />
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse flex-shrink-0"></div>
                         </div>
                       </div>
                     </div>
@@ -770,31 +1042,64 @@ const SalesEntry: React.FC = () => {
                                 <input
                                   type="number"
                                   min="1"
+                                  disabled={lastScannedItem.isIndividual}
                                   value={lastScannedItem.qty}
                                   onChange={(e) => {
                                     const val = parseInt(e.target.value) || 1;
-                                    setItems(prev => prev.map(item => item.id === lastScannedItem.id ? { ...item, qty: val, amount: item.selPrice * val } : item));
+                                    handleUpdateQty(lastScannedItem.id, val);
                                   }}
-                                  className="w-full bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-[18px] font-black rounded-xl px-4 py-3.5 outline-none focus:border-indigo-500 text-center transition-all shadow-inner"
+                                  className={`w-full bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-[15px] font-bold rounded-xl px-4 py-0 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-center transition-all shadow-inner h-[46px] ${lastScannedItem.isIndividual ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 />
                               </div>
                               <div className="space-y-1.5">
-                                <label className="text-[11px] font-black text-gray-500 dark:text-white/40 uppercase tracking-widest ml-1">Discount (₹/unit)</label>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={lastScannedItem.discount}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    const sel = lastScannedItem.mrp - val;
-                                    setItems(prev => prev.map(item => item.id === lastScannedItem.id ? { ...item, discount: val, selPrice: sel, amount: sel * item.qty } : item));
-                                  }}
-                                  className="w-full bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.1] text-rose-600 dark:text-rose-400 text-[18px] font-black rounded-xl px-4 py-3.5 outline-none focus:border-rose-500 text-center transition-all shadow-inner"
-                                />
+                                <label className="text-[11px] font-black text-gray-500 dark:text-white/40 uppercase tracking-widest ml-1">Discount</label>
+                                <div className="grid grid-cols-2 gap-4">
+                                  {/* Discount % */}
+                                  <div className="relative flex items-center bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.1] rounded-xl focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all shadow-inner h-[46px]">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      step="0.1"
+                                      placeholder="0"
+                                      value={lastScannedItem.selPrice > 0 ? (lastScannedItem.discount === 0 ? '' : Number(((lastScannedItem.discount / lastScannedItem.selPrice) * 100).toFixed(2))) : ''}
+                                      onChange={(e) => {
+                                        const pct = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
+                                        const discVal = (lastScannedItem.selPrice * pct) / 100;
+                                        const amount = (lastScannedItem.selPrice - discVal) * lastScannedItem.qty;
+                                        const rate = lastScannedItem.taxRate || 0;
+                                        const taxAmt = (amount * rate) / 100;
+                                        setItems(prev => prev.map(item => item.id === lastScannedItem.id ? { ...item, discount: discVal, amount, taxAmt } : item));
+                                      }}
+                                      className="w-full h-full bg-transparent border-0 text-right pr-8 pl-3 p-0 font-bold text-[15px] text-slate-800 dark:text-slate-100 focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
+                                    />
+                                    <span className="absolute right-3 text-[13px] font-bold text-slate-400 select-none">%</span>
+                                  </div>
+
+                                  {/* Discount ₹ */}
+                                  <div className="relative flex items-center bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.1] rounded-xl focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-500/20 transition-all shadow-inner h-[46px]">
+                                    <span className="absolute left-3 text-[13px] font-bold text-slate-400 select-none">₹</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={lastScannedItem.selPrice}
+                                      placeholder="0.00"
+                                      value={lastScannedItem.discount || ''}
+                                      onChange={(e) => {
+                                        const discVal = Math.max(0, Math.min(lastScannedItem.selPrice, parseFloat(e.target.value) || 0));
+                                        const amount = (lastScannedItem.selPrice - discVal) * lastScannedItem.qty;
+                                        const rate = lastScannedItem.taxRate || 0;
+                                        const taxAmt = (amount * rate) / 100;
+                                        setItems(prev => prev.map(item => item.id === lastScannedItem.id ? { ...item, discount: discVal, amount, taxAmt } : item));
+                                      }}
+                                      className="w-full h-full bg-transparent border-0 text-right pr-3 pl-8 p-0 font-bold text-[15px] text-rose-600 dark:text-rose-400 focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
+                                    />
+                                  </div>
+                                </div>
                               </div>
                               <div className="space-y-1.5">
-                                <label className="text-[10px] font-extrabold text-gray-500 dark:text-white/30 uppercase tracking-widest ml-1">Final Price</label>
-                                <div className="w-full bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[16px] font-extrabold rounded-xl px-4 py-3 text-center shadow-inner flex items-center justify-center h-[54px]">
+                                <label className="text-[11px] font-black text-gray-500 dark:text-white/40 uppercase tracking-widest ml-1">Final Price</label>
+                                <div className="w-full bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[15px] font-bold rounded-xl px-4 py-0 text-center shadow-inner flex items-center justify-center h-[46px]">
                                   ₹{lastScannedItem.selPrice.toLocaleString()}
                                 </div>
                               </div>
@@ -912,14 +1217,30 @@ const SalesEntry: React.FC = () => {
                             <span className="text-gray-900 dark:text-white font-black">₹{subtotalExclTax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                           <div className="bg-slate-100/50 dark:bg-white/[0.02] p-3 rounded-xl space-y-2">
-                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
-                              <span>CGST (2.5%)</span>
-                              <span>₹{cgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
-                              <span>SGST (2.5%)</span>
-                              <span>₹{sgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            </div>
+                            {cgstAmount > 0 && (
+                              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                <span>CGST</span>
+                                <span>₹{cgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            )}
+                            {sgstAmount > 0 && (
+                              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                <span>SGST</span>
+                                <span>₹{sgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            )}
+                            {igstAmount > 0 && (
+                              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                <span>IGST</span>
+                                <span>₹{igstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            )}
+                            {cgstAmount === 0 && sgstAmount === 0 && igstAmount === 0 && (
+                              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                <span>GST 0%</span>
+                                <span>₹0.00</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </motion.div>
@@ -941,6 +1262,10 @@ const SalesEntry: React.FC = () => {
                         <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-right">Savings</span>
                         <span className="text-[14px] font-black text-rose-600 dark:text-rose-400 text-right">-₹{totalDiscount.toLocaleString()}</span>
                       </div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest text-right">Tax</span>
+                        <span className="text-[14px] font-black text-indigo-650 dark:text-indigo-400 text-right">₹{totalTaxAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
                     </div>
 
                     <div className="flex justify-between items-end mb-3">
@@ -951,20 +1276,71 @@ const SalesEntry: React.FC = () => {
                           <span className="text-[36px] font-[1000] text-emerald-600 dark:text-emerald-400 leading-none tracking-tighter">{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                       </div>
-                      <button
-                        onClick={() => setIsDetailsOpen(!isDetailsOpen)}
-                        className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all"
-                      >
-                        {isDetailsOpen ? 'Hide' : 'Details'}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        {(formMode === 'NEW' || formMode === 'EDIT') && (
+                          <>
+                            <div className="flex flex-col w-[85px] -mt-1">
+                              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-center flex items-center gap-1 justify-center">
+                                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bulk %
+                              </span>
+                              <div className="relative mt-1">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  placeholder="0"
+                                  value={globalDiscountPercent || ''}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value);
+                                    handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
+                                  }}
+                                  disabled={false}
+                                  className="w-full pl-2 pr-6 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">%</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col w-[90px] -mt-1">
+                              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-center flex items-center gap-1 justify-center">
+                                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bulk Amt
+                              </span>
+                              <div className="relative mt-1">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  placeholder="0"
+                                  value={globalDiscountAmount || ''}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value);
+                                    handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);
+                                  }}
+                                  disabled={false}
+                                  className="w-full pl-5 pr-2 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">₹</span>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        <button
+                          onClick={() => setIsDetailsOpen(!isDetailsOpen)}
+                          className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all h-8 flex items-center justify-center"
+                        >
+                          {isDetailsOpen ? 'Hide' : 'Details'}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex gap-2">
-                      <button onClick={handleNewSale} className="flex-1 py-3 bg-white dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-amber-600 dark:text-amber-400 border border-slate-200 dark:border-white/10 rounded-xl font-black text-[12px] flex items-center justify-center gap-2 transition-all">
-                        <PauseCircle className="w-3.5 h-3.5" /> Clear
+                      <button onClick={handleNewSale} className="flex-1 py-3 bg-white dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-white/60 border border-slate-200 dark:border-white/10 rounded-xl font-black text-[12px] flex items-center justify-center gap-2 transition-all">
+                        <X className="w-4 h-4" /> Cancel
                       </button>
-                      <button onClick={handleCompleteSale} disabled={formMode === 'VIEW' || formMode === 'LOCKED'} className={`flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-[1000] text-[14px] flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-50 cursor-not-allowed active:scale-100' : ''}`}>
-                        <CheckCircle2 className="w-4 h-4" /> Complete Sale
+                      <button
+                        onClick={handleCompleteSale}
+                        disabled={formMode === 'VIEW' || formMode === 'LOCKED' || items.length === 0 || isSaving}
+                        className={`flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-[1000] text-[14px] flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 ${formMode === 'VIEW' || formMode === 'LOCKED' || items.length === 0 || isSaving ? 'opacity-50 cursor-not-allowed active:scale-100' : ''}`}
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> {isSaving ? 'Completing...' : 'Complete Sale'}
                       </button>
                     </div>
                   </div>
@@ -974,7 +1350,7 @@ const SalesEntry: React.FC = () => {
           </div>
         )}
       </div>
-      {viewMode === 'classic' && <TotalsFooter />}
+      {viewMode === 'classic' && TotalsFooter()}
 
       {/* --- SALES REGISTER / HISTORY MODAL (F3) --- */}
       <LoadInvoiceModal
@@ -984,7 +1360,12 @@ const SalesEntry: React.FC = () => {
         onSearchChange={setHistorySearch}
         invoicesList={savedInvoicesList}
         onSelectInvoice={handleLoadInvoice}
-        onRefresh={fetchHistory}
+        onRefresh={() => fetchHistory(1, historySearch, false)}
+        onLoadMore={() => fetchHistory(historyPage + 1, historySearch, true)}
+        hasMore={hasMoreHistory}
+        isLoading={isLoadingHistory}
+        totalRecords={totalHistoryRecords}
+        loadingInvoiceId={loadingInvoiceId}
       />
 
       {/* Notification Modal */}
@@ -1002,30 +1383,27 @@ const SalesEntry: React.FC = () => {
               exit={{ scale: 0.95, y: 20 }}
               className="bg-white dark:bg-[#151515] border border-slate-200 dark:border-white/[0.1] rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col"
             >
-              <div className={`p-6 border-b border-slate-100 dark:border-white/[0.08] flex items-center gap-4 ${
-                popup.type === 'error' ? 'bg-rose-50/50 dark:bg-rose-500/10' :
+              <div className={`p-6 border-b border-slate-100 dark:border-white/[0.08] flex items-center gap-4 ${popup.type === 'error' ? 'bg-rose-50/50 dark:bg-rose-500/10' :
                 popup.type === 'warning' ? 'bg-amber-50/50 dark:bg-amber-500/10' :
-                popup.type === 'success' ? 'bg-emerald-50/50 dark:bg-emerald-500/10' :
-                'bg-indigo-50/50 dark:bg-indigo-500/10'
-              }`}>
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0 ${
-                  popup.type === 'error' ? 'bg-rose-600 shadow-rose-500/30' :
-                  popup.type === 'warning' ? 'bg-amber-500 shadow-amber-500/30' :
-                  popup.type === 'success' ? 'bg-emerald-600 shadow-emerald-500/30' :
-                  'bg-indigo-600 shadow-indigo-500/30'
+                  popup.type === 'success' ? 'bg-emerald-50/50 dark:bg-emerald-500/10' :
+                    'bg-indigo-50/50 dark:bg-indigo-500/10'
                 }`}>
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0 ${popup.type === 'error' ? 'bg-rose-600 shadow-rose-500/30' :
+                  popup.type === 'warning' ? 'bg-amber-500 shadow-amber-500/30' :
+                    popup.type === 'success' ? 'bg-emerald-600 shadow-emerald-500/30' :
+                      'bg-indigo-600 shadow-indigo-500/30'
+                  }`}>
                   {popup.type === 'error' ? <AlertTriangle className="w-6 h-6 stroke-[2.5]" /> :
-                   popup.type === 'warning' ? <AlertCircle className="w-6 h-6 stroke-[2.5]" /> :
-                   popup.type === 'success' ? <CheckCircle2 className="w-6 h-6 stroke-[2.5]" /> :
-                   <Info className="w-6 h-6 stroke-[2.5]" />}
+                    popup.type === 'warning' ? <AlertCircle className="w-6 h-6 stroke-[2.5]" /> :
+                      popup.type === 'success' ? <CheckCircle2 className="w-6 h-6 stroke-[2.5]" /> :
+                        <Info className="w-6 h-6 stroke-[2.5]" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className={`text-[10px] font-black uppercase tracking-widest block mb-0.5 ${
-                    popup.type === 'error' ? 'text-rose-600 dark:text-rose-400' :
+                  <span className={`text-[10px] font-black uppercase tracking-widest block mb-0.5 ${popup.type === 'error' ? 'text-rose-600 dark:text-rose-400' :
                     popup.type === 'warning' ? 'text-amber-600 dark:text-amber-400' :
-                    popup.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
-                    'text-indigo-600 dark:text-indigo-400'
-                  }`}>
+                      popup.type === 'success' ? 'text-emerald-600 dark:text-emerald-400' :
+                        'text-indigo-600 dark:text-indigo-400'
+                    }`}>
                     {popup.type.toUpperCase()} NOTIFICATION
                   </span>
                   <h3 className="text-[18px] font-[1000] text-gray-900 dark:text-white tracking-tight leading-tight truncate">{popup.title}</h3>
@@ -1077,12 +1455,11 @@ const SalesEntry: React.FC = () => {
                           popup.confirmAction?.();
                           setPopup(prev => ({ ...prev, isOpen: false, confirmAction: undefined, discardAction: undefined }));
                         }}
-                        className={`px-8 py-3 rounded-xl font-[1000] text-[14px] text-white shadow-xl transition-all active:scale-95 ${
-                          popup.type === 'error' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' :
+                        className={`px-8 py-3 rounded-xl font-[1000] text-[14px] text-white shadow-xl transition-all active:scale-95 ${popup.type === 'error' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' :
                           popup.type === 'warning' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30' :
-                          popup.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30' :
-                          'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'
-                        }`}
+                            popup.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30' :
+                              'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'
+                          }`}
                       >
                         {popup.confirmLabel || 'Save Record'}
                       </button>
@@ -1091,12 +1468,11 @@ const SalesEntry: React.FC = () => {
                 ) : (
                   <button
                     onClick={() => setPopup(prev => ({ ...prev, isOpen: false }))}
-                    className={`px-8 py-3 rounded-xl font-[1000] text-[14px] text-white shadow-xl transition-all active:scale-95 ${
-                      popup.type === 'error' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' :
+                    className={`px-8 py-3 rounded-xl font-[1000] text-[14px] text-white shadow-xl transition-all active:scale-95 ${popup.type === 'error' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' :
                       popup.type === 'warning' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30' :
-                      popup.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30' :
-                      'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'
-                    }`}
+                        popup.type === 'success' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30' :
+                          'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'
+                      }`}
                   >
                     Understood / Close
                   </button>

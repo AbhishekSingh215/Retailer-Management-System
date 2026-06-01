@@ -13,7 +13,7 @@ namespace RMS.Infrastructure.Repositories
         public ProductRepository(IConfiguration configuration) 
         {
             // Using the exact same connection string logic as your Program.cs
-            _connectionString = "Server=STATICABHI;Database=RSOFT;Trusted_Connection=True;TrustServerCertificate=True";
+            _connectionString = "Server=STATICABHI;Database=Parichay;Trusted_Connection=True;TrustServerCertificate=True";
         }
 
         public async Task<BarcodeScanResponse> GetProductByScancodeAsync(string scancode)
@@ -30,11 +30,16 @@ namespace RMS.Infrastructure.Repositories
                         bd.BarcodeSize, 
                         pm.ProductIndividualBarcode, 
                         bd.BarcodeMrp, 
-                        bd.BarcodeSelPrice
+                        bd.BarcodeSelPrice,
+                        pm.ProductHsnId as HsnId,
+                        h.HsnCode as HsnCode,
+                        bd.BarcodeId as BarcodeId,
+                        COALESCE(pm.ProductNoStockChecking, 0) as ProductNoStockChecking
                     FROM BarcodeDetails bd
                     LEFT JOIN ProductMaster pm ON pm.ProductId = bd.BarcodeProductId
                     LEFT JOIN Category c ON c.CategoryID = pm.ProductCtId
                     LEFT JOIN Colors cl ON cl.ColorId = bd.BarcodeColorId
+                    LEFT JOIN Hsn h ON h.HsnId = pm.ProductHsnId
                     WHERE bd.BarcodeDesc = @scancode OR bd.BarcodeSourceBarcode = @scancode
                     ORDER BY (CASE WHEN bd.BarcodeDesc = @scancode THEN 0 ELSE 1 END)";
 

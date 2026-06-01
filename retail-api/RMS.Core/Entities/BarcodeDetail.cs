@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace RMS.Core.Entities;
@@ -59,7 +59,7 @@ public partial class BarcodeDetail
 
     public long? BarcodeSizeId { get; set; }
 
-    public long? BarcodeDesc { get; set; }
+    public string? BarcodeDesc { get; set; }
 
     public long? BarocodeParentId { get; set; }
 

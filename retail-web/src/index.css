@@ -67,7 +67,7 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-slate-200 dark:bg-white/10 rounded-full hover:bg-indigo-400/50 transition-colors;
+  @apply bg-slate-300 dark:bg-white/20 rounded-full hover:bg-indigo-400/50 transition-colors;
 }
 
 /* Glassmorphism Utilities */

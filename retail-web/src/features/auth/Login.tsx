@@ -43,7 +43,11 @@ const Login: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email: username, password }),
+        body: JSON.stringify({ 
+          email: username, 
+          password,
+          loginDate: new Date().toISOString()
+        }),
       });
 
       const data = await response.json();

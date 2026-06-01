@@ -3,19 +3,25 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { 
   Search, 
-  Store, 
-  LayoutDashboard, 
-  Users, 
-  Settings,
-  ArrowRight
+  ArrowRight,
+  LayoutDashboard,
+  LayoutGrid
 } from 'lucide-react';
+import { NAVIGATION_REGISTRY } from '../config/navigation';
 
-// Define the searchable forms/routes
+// Build the searchable forms/routes dynamically from the registry
 const ROUTES = [
   { id: 'dashboard', label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, category: 'General' },
-  { id: 'sales', label: 'Sales Entry', path: '/sales', icon: Store, category: 'Transactions' },
-  { id: 'customers', label: 'Customers Database', path: '/customers', icon: Users, category: 'General' },
-  { id: 'settings', label: 'System Settings', path: '/settings', icon: Settings, category: 'General' },
+  { id: 'launchpad', label: 'Launchpad', path: '/launchpad', icon: LayoutGrid, category: 'General' },
+  ...NAVIGATION_REGISTRY.flatMap(group => 
+    group.items.map(item => ({
+      id: item.id,
+      label: item.label,
+      path: item.path,
+      icon: item.icon,
+      category: group.label
+    }))
+  )
 ];
 
 export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {

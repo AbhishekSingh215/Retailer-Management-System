@@ -10,4 +10,11 @@ public class BarcodeScanResponse
     public decimal BarcodeMrp { get; set; }
     public decimal BarcodeSelPrice { get; set; }
     public string HsnCode { get; set; }
+    public long? HsnId { get; set; }
+    public decimal? TaxRate { get; set; }
+    public string? TaxDesc { get; set; }
+    public long? TaxId { get; set; }
+    public long BarcodeId { get; set; }
+    public bool ProductNoStockChecking { get; set; }
+    public decimal AvailableStock { get; set; }
 }

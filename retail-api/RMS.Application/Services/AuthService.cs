@@ -72,15 +72,21 @@ public class AuthService : IAuthService
         var token = tokenHandler.CreateToken(tokenDescriptor);
         var jwtToken = tokenHandler.WriteToken(token);
 
-        // Fetch active Company Profile (e.g. IsMainCompany == true, or first available)
-        var company = await _context.CompanyProfiles.FirstOrDefaultAsync(c => c.IsMainCompany == true) 
+        // Fetch active Company Profile based on login date
+        var loginDate = request.LoginDate?.Date ?? DateTime.Today;
+        var company = await _context.CompanyProfiles.FirstOrDefaultAsync(c => 
+                            c.CompanyFinFromDate.HasValue && 
+                            c.CompanyFinToDate.HasValue && 
+                            loginDate >= c.CompanyFinFromDate.Value && 
+                            loginDate <= c.CompanyFinToDate.Value)
+                      ?? await _context.CompanyProfiles.FirstOrDefaultAsync(c => c.IsMainCompany == true) 
                       ?? await _context.CompanyProfiles.FirstOrDefaultAsync();
 
         long companyId = company?.CompanyId ?? 1;
         string companyName = company?.CompanyName ?? "Default Company";
         string companyCount = company?.CompanyCount ?? "1";
-        DateTime? finFrom = company?.CompanyFinFromDate ?? new DateTime(DateTime.UtcNow.Year, 4, 1);
-        DateTime? finTo = company?.CompanyFinToDate ?? new DateTime(DateTime.UtcNow.Year + 1, 3, 31);
+        DateTime? finFrom = company?.CompanyFinFromDate ?? new DateTime(loginDate.Year, 4, 1);
+        DateTime? finTo = company?.CompanyFinToDate ?? new DateTime(loginDate.Year + 1, 3, 31);
 
         return new AuthResponse
         {
@@ -104,7 +110,7 @@ public class AuthService : IAuthService
     {
         // TODO: Port your legacy AES/Encryption logic here.
         // For now, we will map the known plaintext "A" to its known encrypted counterpart to grant you access.
-        if (plainTextPassword == "A" && encryptedDbPassword == "ENG012SEKcEEzHlYUJ1t9Q==")
+        if (plainTextPassword == "A" && encryptedDbPassword == "jJbS+Mj23xv0HeAEY8hCvQ==")
         {
             return true;
         }

@@ -17,5 +17,8 @@ public interface IApplicationDbContext
     DbSet<Category> Categories { get; set; }
     DbSet<Color> Colors { get; set; }
     DbSet<Hsn> Hsns { get; set; }
+    DbSet<HsnDetail> HsnDetails { get; set; }
+    DbSet<TaxMaster> TaxMasters { get; set; }
+    DbSet<Salesman> Salesmen { get; set; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
