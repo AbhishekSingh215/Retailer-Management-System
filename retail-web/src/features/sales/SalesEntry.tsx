@@ -43,7 +43,6 @@ const SalesEntry: React.FC = () => {
     historySearch,
     setHistorySearch,
     items,
-    setItems,
     savedInvoicesList,
     popup,
     setPopup,
@@ -81,6 +80,12 @@ const SalesEntry: React.FC = () => {
     handleBarcodeScan,
     handleRemoveItem,
     handleUpdateQty,
+    pendingNoStockItem,
+    noStockSelPrice,
+    setNoStockSelPrice,
+    handleNoStockPriceSubmit,
+    cancelNoStockItem,
+    handleUpdateItemDiscount,
     handleUpdateItemDiscountPercent,
     purSalesmanId,
     setPurSalesmanId,
@@ -381,7 +386,7 @@ const SalesEntry: React.FC = () => {
             <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
             <div className="flex flex-col gap-0.5 w-[85px] -mt-1">
               <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center">
-                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bulk %
+                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill %
               </span>
               <div className="relative mt-1">
                 <input
@@ -389,7 +394,7 @@ const SalesEntry: React.FC = () => {
                   min="0"
                   max="100"
                   placeholder="0"
-                  value={globalDiscountPercent || ''}
+                  value={globalDiscountPercent ? Math.round(globalDiscountPercent * 100) / 100 : ''}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
                     handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
@@ -402,14 +407,14 @@ const SalesEntry: React.FC = () => {
             </div>
             <div className="flex flex-col gap-0.5 w-[90px] -mt-1">
               <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center">
-                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bulk Amt
+                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Amt
               </span>
               <div className="relative mt-1">
                 <input
                   type="number"
                   min="0"
                   placeholder="0"
-                  value={globalDiscountAmount || ''}
+                  value={globalDiscountAmount ? Math.round(globalDiscountAmount * 100) / 100 : ''}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
                     handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);
@@ -617,22 +622,46 @@ const SalesEntry: React.FC = () => {
               </span>
             </div>
             <div className="flex-1 relative group">
-              <input
-                type="text"
-                placeholder="Scan Barcode or Type Product Code..."
-                autoFocus
-                value={barcodeInput}
-                onChange={(e) => setBarcodeInput(e.target.value)}
-                onKeyDown={handleBarcodeScan}
-                disabled={isScanningItem}
-                className={`w-full px-5 py-2 bg-slate-50 dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-black dark:text-white focus:outline-none focus:border-indigo-600 dark:focus:border-indigo-500 transition-all shadow-inner placeholder:text-slate-300 ${isScanningItem ? 'opacity-50' : ''}`}
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest hidden lg:block">Enter to Bind</span>
-                <button className="p-1 text-slate-400 hover:text-indigo-600 transition-colors">
-                  <Search className="w-4 h-4" />
-                </button>
-              </div>
+              {pendingNoStockItem ? (
+                <div className="relative flex items-center w-full">
+                  <span className="absolute left-3 text-[12px] font-black text-emerald-600 dark:text-emerald-400 select-none uppercase tracking-wider">Set Sel Price: ₹</span>
+                  <input
+                    type="number"
+                    autoFocus
+                    placeholder="0.00"
+                    value={noStockSelPrice}
+                    onChange={(e) => setNoStockSelPrice(e.target.value)}
+                    onKeyDown={handleNoStockPriceSubmit}
+                    className="w-full pl-32 pr-10 py-2 bg-emerald-50/50 dark:bg-emerald-950/20 border-2 border-emerald-500 rounded-xl text-[14px] font-[1000] text-black dark:text-white focus:outline-none transition-all shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <button 
+                    onClick={cancelNoStockItem}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-rose-500 hover:text-rose-700 transition-colors"
+                    title="Cancel scan"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Scan Barcode or Type Product Code..."
+                    autoFocus
+                    value={barcodeInput}
+                    onChange={(e) => setBarcodeInput(e.target.value)}
+                    onKeyDown={handleBarcodeScan}
+                    disabled={isScanningItem}
+                    className={`w-full px-5 py-2 bg-slate-50 dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-black dark:text-white focus:outline-none focus:border-indigo-600 dark:focus:border-indigo-500 transition-all shadow-inner placeholder:text-slate-300 ${isScanningItem ? 'opacity-50' : ''}`}
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest hidden lg:block">Enter to Bind</span>
+                    <button className="p-1 text-slate-400 hover:text-indigo-600 transition-colors">
+                      <Search className="w-4 h-4" />
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -720,6 +749,12 @@ const SalesEntry: React.FC = () => {
                           value={item.qty === 0 ? '' : item.qty}
                           disabled={item.isIndividual}
                           onChange={(e) => handleUpdateQty(item.id, Number(e.target.value))}
+                          onBlur={(e) => {
+                            const val = Number(e.target.value);
+                            if (isNaN(val) || val <= 0) {
+                              handleUpdateQty(item.id, 1);
+                            }
+                          }}
                           className={`w-20 px-3 py-1 bg-white dark:bg-white/[0.05] border-2 ${item.isIndividual ? 'border-slate-200 dark:border-white/[0.05] opacity-50 cursor-not-allowed' : 'border-slate-400 dark:border-white/[0.1] focus:border-indigo-500'} rounded-xl text-[14px] font-[1000] text-center text-black dark:text-white shadow-md focus:outline-none`}
                           min="1"
                         />
@@ -738,7 +773,7 @@ const SalesEntry: React.FC = () => {
                         <div className="inline-flex items-center justify-between border border-slate-200 dark:border-white/[0.1] rounded-lg bg-slate-50 dark:bg-white/[0.02] px-2 py-1 w-[80px] focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all">
                           <input
                             type="number"
-                            value={item.selPrice > 0 ? (item.discount === 0 ? '' : ((item.discount / item.selPrice) * 100).toFixed(2).replace(/\.00$/, '')) : ''}
+                            value={item.selPrice > 0 ? ((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) === 0 ? '' : (((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) / item.selPrice) * 100).toFixed(2).replace(/\.00$/, '')) : ''}
                             onChange={(e) => handleUpdateItemDiscountPercent(item.id, Number(e.target.value))}
                             className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-slate-800 dark:text-slate-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
                             min="0"
@@ -751,12 +786,12 @@ const SalesEntry: React.FC = () => {
                       </div>
                     ) : (
                       <span className="inline-block text-[13px] font-bold text-slate-750 dark:text-slate-200 pr-[9px]">
-                        {item.selPrice > 0 ? ((item.discount / item.selPrice) * 100).toFixed(2) : '0.00'}%
+                        {item.selPrice > 0 ? (((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) / item.selPrice) * 100).toFixed(2) : '0.00'}%
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-5 text-[14px] font-[1000] text-rose-700 text-right whitespace-nowrap">-₹{item.discount.toLocaleString()}</td>
-                  <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{(item.selPrice - item.discount).toLocaleString()}</td>
+                  <td className="px-6 py-5 text-[14px] font-[1000] text-rose-700 text-right whitespace-nowrap">-₹{(item.rowDiscount !== undefined ? item.rowDiscount : item.discount).toLocaleString()}</td>
+                  <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{(item.selPrice - (item.rowDiscount !== undefined ? item.rowDiscount : item.discount)).toLocaleString()}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.hsn}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.taxDesc}</td>
                   <td className="px-6 py-5 text-[13px] font-[900] text-slate-600 text-right whitespace-nowrap">₹{item.taxAmt.toLocaleString()}</td>
@@ -976,18 +1011,42 @@ const SalesEntry: React.FC = () => {
                         <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Scancode</span>
                       </div>
                       <div className="relative group">
-                        <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                          <Barcode className="h-5 w-5 text-indigo-400 dark:text-blue-400 group-focus-within:text-indigo-600 transition-colors" />
-                        </div>
-                        <input
-                          type="text"
-                          value={barcodeInput}
-                          onChange={(e) => setBarcodeInput(e.target.value)}
-                          onKeyDown={handleBarcodeScan}
-                          disabled={isScanningItem}
-                          placeholder={isScanningItem ? "Searching..." : "Scan Barcode or Search..."}
-                          className={`w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-100 dark:border-white/[0.1] text-gray-900 dark:text-white text-[14px] font-extrabold rounded-2xl pl-12 pr-24 py-3 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner ${isScanningItem ? 'animate-pulse' : ''}`}
-                        />
+                        {pendingNoStockItem ? (
+                          <div className="relative flex items-center w-full">
+                            <span className="absolute left-4 text-[12px] font-black text-emerald-600 dark:text-emerald-400 select-none uppercase tracking-wider">Set Sel Price: ₹</span>
+                            <input
+                              type="number"
+                              autoFocus
+                              placeholder="0.00"
+                              value={noStockSelPrice}
+                              onChange={(e) => setNoStockSelPrice(e.target.value)}
+                              onKeyDown={handleNoStockPriceSubmit}
+                              className="w-full bg-emerald-50/50 dark:bg-emerald-950/20 border-2 border-emerald-500 text-gray-900 dark:text-white text-[14px] font-extrabold rounded-2xl pl-36 pr-12 py-3 outline-none transition-all shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <button 
+                              onClick={cancelNoStockItem}
+                              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-rose-500 hover:text-rose-700 transition-colors"
+                              title="Cancel scan"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                              <Barcode className="h-5 w-5 text-indigo-400 dark:text-blue-400 group-focus-within:text-indigo-600 transition-colors" />
+                            </div>
+                            <input
+                              type="text"
+                              value={barcodeInput}
+                              onChange={(e) => setBarcodeInput(e.target.value)}
+                              onKeyDown={handleBarcodeScan}
+                              disabled={isScanningItem}
+                              placeholder={isScanningItem ? "Searching..." : "Scan Barcode or Search..."}
+                              className={`w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-100 dark:border-white/[0.1] text-gray-900 dark:text-white text-[14px] font-extrabold rounded-2xl pl-12 pr-24 py-3 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner ${isScanningItem ? 'animate-pulse' : ''}`}
+                            />
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -1036,22 +1095,29 @@ const SalesEntry: React.FC = () => {
                           </div>
 
                           <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                               <div className="space-y-1.5">
                                 <label className="text-[11px] font-black text-gray-500 dark:text-white/40 uppercase tracking-widest ml-1">Quantity</label>
                                 <input
                                   type="number"
                                   min="1"
                                   disabled={lastScannedItem.isIndividual}
-                                  value={lastScannedItem.qty}
+                                  value={lastScannedItem.qty === 0 ? '' : lastScannedItem.qty}
                                   onChange={(e) => {
-                                    const val = parseInt(e.target.value) || 1;
-                                    handleUpdateQty(lastScannedItem.id, val);
+                                    const val = parseInt(e.target.value);
+                                    handleUpdateQty(lastScannedItem.id, isNaN(val) ? 0 : val);
+                                  }}
+                                  onBlur={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    if (isNaN(val) || val <= 0) {
+                                      handleUpdateQty(lastScannedItem.id, 1);
+                                    }
                                   }}
                                   className={`w-full bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-[15px] font-bold rounded-xl px-4 py-0 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-center transition-all shadow-inner h-[46px] ${lastScannedItem.isIndividual ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 />
                               </div>
-                              <div className="space-y-1.5">
+
+                              <div className="space-y-1.5 col-span-1">
                                 <label className="text-[11px] font-black text-gray-500 dark:text-white/40 uppercase tracking-widest ml-1">Discount</label>
                                 <div className="grid grid-cols-2 gap-4">
                                   {/* Discount % */}
@@ -1062,15 +1128,8 @@ const SalesEntry: React.FC = () => {
                                       max="100"
                                       step="0.1"
                                       placeholder="0"
-                                      value={lastScannedItem.selPrice > 0 ? (lastScannedItem.discount === 0 ? '' : Number(((lastScannedItem.discount / lastScannedItem.selPrice) * 100).toFixed(2))) : ''}
-                                      onChange={(e) => {
-                                        const pct = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
-                                        const discVal = (lastScannedItem.selPrice * pct) / 100;
-                                        const amount = (lastScannedItem.selPrice - discVal) * lastScannedItem.qty;
-                                        const rate = lastScannedItem.taxRate || 0;
-                                        const taxAmt = (amount * rate) / 100;
-                                        setItems(prev => prev.map(item => item.id === lastScannedItem.id ? { ...item, discount: discVal, amount, taxAmt } : item));
-                                      }}
+                                      value={lastScannedItem.selPrice > 0 ? ((lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount) === 0 ? '' : Number((((lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount) / lastScannedItem.selPrice) * 100).toFixed(2))) : ''}
+                                      onChange={(e) => handleUpdateItemDiscountPercent(lastScannedItem.id, parseFloat(e.target.value) || 0)}
                                       className="w-full h-full bg-transparent border-0 text-right pr-8 pl-3 p-0 font-bold text-[15px] text-slate-800 dark:text-slate-100 focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
                                     />
                                     <span className="absolute right-3 text-[13px] font-bold text-slate-400 select-none">%</span>
@@ -1084,14 +1143,8 @@ const SalesEntry: React.FC = () => {
                                       min="0"
                                       max={lastScannedItem.selPrice}
                                       placeholder="0.00"
-                                      value={lastScannedItem.discount || ''}
-                                      onChange={(e) => {
-                                        const discVal = Math.max(0, Math.min(lastScannedItem.selPrice, parseFloat(e.target.value) || 0));
-                                        const amount = (lastScannedItem.selPrice - discVal) * lastScannedItem.qty;
-                                        const rate = lastScannedItem.taxRate || 0;
-                                        const taxAmt = (amount * rate) / 100;
-                                        setItems(prev => prev.map(item => item.id === lastScannedItem.id ? { ...item, discount: discVal, amount, taxAmt } : item));
-                                      }}
+                                      value={(lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount) || ''}
+                                      onChange={(e) => handleUpdateItemDiscount(lastScannedItem.id, parseFloat(e.target.value) || 0)}
                                       className="w-full h-full bg-transparent border-0 text-right pr-3 pl-8 p-0 font-bold text-[15px] text-rose-600 dark:text-rose-400 focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
                                     />
                                   </div>
@@ -1100,7 +1153,7 @@ const SalesEntry: React.FC = () => {
                               <div className="space-y-1.5">
                                 <label className="text-[11px] font-black text-gray-500 dark:text-white/40 uppercase tracking-widest ml-1">Final Price</label>
                                 <div className="w-full bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[15px] font-bold rounded-xl px-4 py-0 text-center shadow-inner flex items-center justify-center h-[46px]">
-                                  ₹{lastScannedItem.selPrice.toLocaleString()}
+                                  ₹{(lastScannedItem.selPrice - (lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount)).toLocaleString()}
                                 </div>
                               </div>
                             </div>
@@ -1154,7 +1207,7 @@ const SalesEntry: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="px-6 py-2 bg-slate-50/50 dark:bg-white/[0.02] border-b border-slate-200 dark:border-white/[0.05] flex text-[9px] font-extrabold text-gray-400 dark:text-white/20 uppercase tracking-[0.25em] shrink-0">
+                <div className="pl-6 pr-16 py-2 bg-slate-50/50 dark:bg-white/[0.02] border-b border-slate-200 dark:border-white/[0.05] flex text-[9px] font-extrabold text-gray-400 dark:text-white/20 uppercase tracking-[0.25em] shrink-0">
                   <div className="w-8">#</div>
                   <div className="flex-1">Item Description</div>
                   <div className="w-16 text-center">Qty</div>
@@ -1169,7 +1222,7 @@ const SalesEntry: React.FC = () => {
                     </div>
                   ) : (
                     filteredItems.map((item, index) => (
-                      <div key={item.id} className="px-6 py-4 border-b border-slate-100 dark:border-white/[0.03] hover:bg-slate-50/50 dark:hover:bg-white/[0.01] transition-colors group relative flex items-center gap-3">
+                      <div key={item.id} className="pl-6 pr-16 py-4 border-b border-slate-100 dark:border-white/[0.03] hover:bg-slate-50/50 dark:hover:bg-white/[0.01] transition-colors group relative flex items-center gap-3">
                         <div className="w-8 text-[11px] font-bold text-slate-300 dark:text-white/10">{index + 1}</div>
                         <div className="flex-1 min-w-0">
                           <h4 className="text-[13px] font-extrabold text-gray-900 dark:text-white leading-tight truncate">{item.productCode}</h4>
@@ -1181,6 +1234,10 @@ const SalesEntry: React.FC = () => {
                             <span className="text-[9px] font-bold text-slate-300 dark:text-white/20 line-through">₹{item.mrp.toLocaleString()}</span>
                             <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">₹{item.selPrice.toLocaleString()} / unit</span>
                           </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded-md">{item.taxDesc}</span>
+                            <span className="text-[9px] font-extrabold text-slate-400">Tax: ₹{(item.taxAmt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          </div>
                         </div>
                         <div className="w-16 text-center">
                           <div className="inline-block px-2 py-0.5 bg-slate-100 dark:bg-white/[0.05] rounded-lg text-[12px] font-black text-slate-700 dark:text-white/70 border border-slate-200 dark:border-white/[0.05]">
@@ -1191,7 +1248,7 @@ const SalesEntry: React.FC = () => {
                           <p className="text-[13px] font-extrabold text-gray-900 dark:text-white leading-none">₹{item.amount.toLocaleString()}</p>
                         </div>
                         {formMode !== 'VIEW' && formMode !== 'LOCKED' && (
-                          <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1">
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1">
                             <button onClick={() => handleRemoveItem(item.id)} className="p-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-100 transition-all">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1281,7 +1338,7 @@ const SalesEntry: React.FC = () => {
                           <>
                             <div className="flex flex-col w-[85px] -mt-1">
                               <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-center flex items-center gap-1 justify-center">
-                                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bulk %
+                                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill %
                               </span>
                               <div className="relative mt-1">
                                 <input
@@ -1289,7 +1346,7 @@ const SalesEntry: React.FC = () => {
                                   min="0"
                                   max="100"
                                   placeholder="0"
-                                  value={globalDiscountPercent || ''}
+                                  value={globalDiscountPercent ? Math.round(globalDiscountPercent * 100) / 100 : ''}
                                   onChange={(e) => {
                                     const val = parseFloat(e.target.value);
                                     handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
@@ -1302,14 +1359,14 @@ const SalesEntry: React.FC = () => {
                             </div>
                             <div className="flex flex-col w-[90px] -mt-1">
                               <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-center flex items-center gap-1 justify-center">
-                                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bulk Amt
+                                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Amt
                               </span>
                               <div className="relative mt-1">
                                 <input
                                   type="number"
                                   min="0"
                                   placeholder="0"
-                                  value={globalDiscountAmount || ''}
+                                  value={globalDiscountAmount ? Math.round(globalDiscountAmount * 100) / 100 : ''}
                                   onChange={(e) => {
                                     const val = parseFloat(e.target.value);
                                     handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);

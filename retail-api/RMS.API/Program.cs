@@ -16,7 +16,9 @@ builder.Services.AddOpenApi();
 // Configure Database Context
 var connectionString = "Server=STATICABHI;Database=Parichay;Trusted_Connection=True;TrustServerCertificate=True";
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString, o => o.UseCompatibilityLevel(120)));
+    options.UseSqlServer(connectionString, o => o
+        .UseCompatibilityLevel(120)
+        .CommandTimeout(60)));
 
 // Register Application Services
 builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());

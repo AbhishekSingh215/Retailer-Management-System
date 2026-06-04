@@ -22,6 +22,8 @@ export interface LineItem {
   mrp: number;
   selPrice: number;
   discount: number;
+  rowDiscount?: number;
+  lastTaxCalculatedPrice?: number;
   hsn: string;
   taxDesc: string;
   taxAmt: number;
@@ -55,6 +57,43 @@ export interface PopupMessage {
   discardLabel?: string;
   cancelLabel?: string;
 }
+
+export const recalculateItems = (
+  currentItems: LineItem[],
+  globalPct: number,
+  globalAmt: number
+): LineItem[] => {
+  const totalAmountAfterRowDiscount = currentItems.reduce((sum, item) => {
+    const rowDisc = item.rowDiscount !== undefined ? item.rowDiscount : item.discount;
+    return sum + (item.selPrice - rowDisc) * item.qty;
+  }, 0);
+
+  let effectiveGlobalPct = 0;
+  if (globalPct > 0) {
+    effectiveGlobalPct = globalPct;
+  } else if (globalAmt > 0 && totalAmountAfterRowDiscount > 0) {
+    effectiveGlobalPct = (globalAmt / totalAmountAfterRowDiscount) * 100;
+  }
+
+  return currentItems.map(item => {
+    const rowDiscountPerUnit = item.rowDiscount !== undefined ? item.rowDiscount : item.discount;
+    const rateAfterRowDiscount = item.selPrice - rowDiscountPerUnit;
+    const globalDiscountPerUnit = (rateAfterRowDiscount * effectiveGlobalPct) / 100;
+    const totalDiscountPerUnit = rowDiscountPerUnit + globalDiscountPerUnit;
+    const finalRate = rateAfterRowDiscount - globalDiscountPerUnit;
+    const amount = finalRate * item.qty;
+    const taxRate = item.taxRate || 0;
+    const taxAmt = (amount * taxRate) / 100;
+
+    return {
+      ...item,
+      rowDiscount: rowDiscountPerUnit,
+      discount: totalDiscountPerUnit,
+      amount,
+      taxAmt
+    };
+  });
+};
 
 export const useSalesLogic = () => {
   // Retrieve Company Profile from localStorage
@@ -204,6 +243,7 @@ export const useSalesLogic = () => {
     setCurrentPurId(null);
     setGlobalDiscountPercent(0);
     setGlobalDiscountAmount(0);
+    setGlobalDiscountMode('percent');
   }, [fetchNextDocNo]);
 
   const performLoadInvoice = useCallback(async (inv: SavedInvoice) => {
@@ -223,6 +263,7 @@ export const useSalesLogic = () => {
         setIsUserTypingMobile(false);
         setGlobalDiscountPercent(0);
         setGlobalDiscountAmount(0);
+        setGlobalDiscountMode('percent');
         setFormMode('VIEW');
         const rawItems = data.items || data.Items || [];
         const loadedItems: LineItem[] = rawItems.map((i: any) => ({
@@ -239,6 +280,7 @@ export const useSalesLogic = () => {
           mrp: i.mrp || i.Mrp || 0,
           selPrice: i.selPrice || i.SelPrice || 0,
           discount: i.discount || i.Discount || 0,
+          rowDiscount: i.discount || i.Discount || 0,
           hsn: i.hsn || i.Hsn || '9999',
           taxDesc: i.taxDesc || i.TaxDesc || 'GST 0%',
           taxAmt: i.taxAmt !== undefined ? i.taxAmt : (i.TaxAmt !== undefined ? i.TaxAmt : 0),
@@ -279,6 +321,18 @@ export const useSalesLogic = () => {
         title: 'Empty Cart',
         message: 'Cannot save because there are no items in the cart.',
         subMessage: 'Please scan or add at least one product.'
+      });
+      return;
+    }
+
+    const invalidItems = items.filter(i => i.qty <= 0);
+    if (invalidItems.length > 0) {
+      setPopup({
+        isOpen: true,
+        type: 'warning',
+        title: 'Invalid Quantity',
+        message: 'One or more items have an invalid quantity.',
+        subMessage: 'Please ensure all items have a quantity of 1 or more, or remove the items from the cart.'
       });
       return;
     }
@@ -514,6 +568,35 @@ export const useSalesLogic = () => {
   const [globalDiscountPercent, setGlobalDiscountPercent] = useState<number>(0);
   // Global Bulk Discount Amount State
   const [globalDiscountAmount, setGlobalDiscountAmount] = useState<number>(0);
+  // Global Discount Mode State
+  const [globalDiscountMode, setGlobalDiscountMode] = useState<'percent' | 'amount'>('percent');
+
+  // Helper to calculate bidirectional discounts and update items
+  const updateItemsAndRecalculateDiscounts = (
+    newItems: LineItem[],
+    mode: 'percent' | 'amount' = globalDiscountMode,
+    pct: number = globalDiscountPercent,
+    amt: number = globalDiscountAmount
+  ) => {
+    const totalAmountAfterRowDiscount = newItems.reduce((sum, item) => {
+      const rowDisc = item.rowDiscount !== undefined ? item.rowDiscount : item.discount;
+      return sum + (item.selPrice - rowDisc) * item.qty;
+    }, 0);
+
+    let finalPct = pct;
+    let finalAmt = amt;
+
+    if (mode === 'percent') {
+      finalAmt = (totalAmountAfterRowDiscount * pct) / 100;
+    } else {
+      finalPct = totalAmountAfterRowDiscount > 0 ? (amt / totalAmountAfterRowDiscount) * 100 : 0;
+    }
+
+    setGlobalDiscountPercent(finalPct);
+    setGlobalDiscountAmount(finalAmt);
+    setGlobalDiscountMode(mode);
+    setItems(recalculateItems(newItems, finalPct, 0));
+  };
 
   // Customer Search States
   const [searchResults, setSearchResults] = useState<Customer[]>([]);
@@ -543,6 +626,89 @@ export const useSalesLogic = () => {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [items.length, formMode]);
+
+  // Dynamic Tax Slab Lookup Effect
+  useEffect(() => {
+    if (formMode === 'VIEW' || formMode === 'LOCKED' || items.length === 0) return;
+
+    const itemsNeedingLookup = items.filter(item => {
+      const rowDiscountPerUnit = item.rowDiscount !== undefined ? item.rowDiscount : item.discount;
+      const rateAfterRowDiscount = item.selPrice - rowDiscountPerUnit;
+      
+      const totalAmountAfterRowDiscount = items.reduce((sum, i) => {
+        const rDisc = i.rowDiscount !== undefined ? i.rowDiscount : i.discount;
+        return sum + (i.selPrice - rDisc) * i.qty;
+      }, 0);
+      
+      let effectiveGlobalPct = 0;
+      if (globalDiscountPercent > 0) {
+        effectiveGlobalPct = globalDiscountPercent;
+      } else if (globalDiscountAmount > 0 && totalAmountAfterRowDiscount > 0) {
+        effectiveGlobalPct = (globalDiscountAmount / totalAmountAfterRowDiscount) * 100;
+      }
+      
+      const globalDiscountPerUnit = (rateAfterRowDiscount * effectiveGlobalPct) / 100;
+      const finalUnitRate = rateAfterRowDiscount - globalDiscountPerUnit;
+      const finalRowAmount = finalUnitRate * item.qty;
+      
+      return item.lastTaxCalculatedPrice === undefined || Math.abs(item.lastTaxCalculatedPrice - finalRowAmount) > 0.01;
+    });
+
+    if (itemsNeedingLookup.length === 0) return;
+
+    const performTaxLookups = async () => {
+      let stateChanged = false;
+      const updatedItems = await Promise.all(items.map(async (item) => {
+        const rowDiscountPerUnit = item.rowDiscount !== undefined ? item.rowDiscount : item.discount;
+        const rateAfterRowDiscount = item.selPrice - rowDiscountPerUnit;
+        
+        const totalAmountAfterRowDiscount = items.reduce((sum, i) => {
+          const rDisc = i.rowDiscount !== undefined ? i.rowDiscount : i.discount;
+          return sum + (i.selPrice - rDisc) * i.qty;
+        }, 0);
+        
+        let effectiveGlobalPct = 0;
+        if (globalDiscountPercent > 0) {
+          effectiveGlobalPct = globalDiscountPercent;
+        } else if (globalDiscountAmount > 0 && totalAmountAfterRowDiscount > 0) {
+          effectiveGlobalPct = (globalDiscountAmount / totalAmountAfterRowDiscount) * 100;
+        }
+        
+        const globalDiscountPerUnit = (rateAfterRowDiscount * effectiveGlobalPct) / 100;
+        const finalUnitRate = rateAfterRowDiscount - globalDiscountPerUnit;
+        const finalRowAmount = finalUnitRate * item.qty;
+
+        if (item.lastTaxCalculatedPrice === undefined || Math.abs(item.lastTaxCalculatedPrice - finalRowAmount) > 0.01) {
+          try {
+            const isIgst = item.taxDesc && item.taxDesc.toUpperCase().includes('IGST');
+            const res = await fetch(
+              `${API_BASE_URL}/product/tax-rate?barcode=${encodeURIComponent(item.barcode)}&price=${finalRowAmount}&companyId=${companyId}&isInterstate=${isIgst}`
+            );
+            if (res.ok) {
+              const data = await res.json();
+              stateChanged = true;
+              return {
+                ...item,
+                taxRate: data.taxRate,
+                taxDesc: data.taxDesc,
+                taxId: data.taxId,
+                lastTaxCalculatedPrice: finalRowAmount
+              };
+            }
+          } catch (err) {
+            console.error("Failed to lookup dynamic tax rate:", err);
+          }
+        }
+        return item;
+      }));
+
+      if (stateChanged) {
+        updateItemsAndRecalculateDiscounts(updatedItems);
+      }
+    };
+
+    performTaxLookups();
+  }, [items, globalDiscountPercent, globalDiscountAmount, companyId, formMode]);
 
 
 
@@ -597,6 +763,8 @@ export const useSalesLogic = () => {
   // Current scanned item state (Input Form)
   const [barcodeInput, setBarcodeInput] = useState('');
   const [isScanningItem, setIsScanningItem] = useState(false);
+  const [pendingNoStockItem, setPendingNoStockItem] = useState<any | null>(null);
+  const [noStockSelPrice, setNoStockSelPrice] = useState<string>('');
 
   // Dynamic Calculations for Totals & Footer
   const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
@@ -697,15 +865,6 @@ export const useSalesLogic = () => {
         const data = await response.json();
 
         const rate = data.taxRate !== undefined && data.taxRate !== null ? Number(data.taxRate) : 0;
-        // Apply global discount percent or amount if active
-        let defaultDiscount = 0;
-        if (globalDiscountPercent > 0) {
-          defaultDiscount = (data.barcodeSelPrice * globalDiscountPercent) / 100;
-        } else if (globalDiscountAmount > 0) {
-          defaultDiscount = Math.min(data.barcodeSelPrice, globalDiscountAmount);
-        }
-        const finalSelPrice = data.barcodeSelPrice - defaultDiscount;
-        const taxAmt = (finalSelPrice * rate) / 100;
 
         const isIndividual = data.productIndividualBarcode ? (
           String(data.productIndividualBarcode).trim().toUpperCase() === "YES" || 
@@ -718,6 +877,19 @@ export const useSalesLogic = () => {
         const availableStock = data.availableStock || 0;
 
         // Cumulative validations
+        if (!isNoStockChecking && availableStock <= 0) {
+          setPopup({
+            isOpen: true,
+            type: 'warning',
+            title: 'Out of Stock',
+            message: `Product "${data.productCode}" is out of stock.`,
+            subMessage: `Available stock: ${availableStock}`
+          });
+          setBarcodeInput('');
+          setIsScanningItem(false);
+          return;
+        }
+
         if (isIndividual) {
           const alreadyExists = items.some(item => item.barcode === data.barcodedesc || item.sourceCode === data.barcodeSourceBarcode);
           if (alreadyExists) {
@@ -753,6 +925,14 @@ export const useSalesLogic = () => {
           }
         }
 
+        if (isNoStockChecking) {
+          setPendingNoStockItem(data);
+          setNoStockSelPrice('');
+          setBarcodeInput('');
+          setIsScanningItem(false);
+          return;
+        }
+
         const newItem: LineItem = {
           id: Date.now().toString(),
           barcode: data.barcodedesc,
@@ -766,17 +946,18 @@ export const useSalesLogic = () => {
           size: data.barcodeSize,
           mrp: data.barcodeMrp,
           selPrice: data.barcodeSelPrice,
-          discount: defaultDiscount,
+          discount: 0,
+          rowDiscount: 0,
           hsn: data.hsnCode,
           taxDesc: data.taxDesc || 'GST 0%',
-          taxAmt: taxAmt,
+          taxAmt: 0,
           qty: 1,
-          amount: finalSelPrice,
+          amount: data.barcodeSelPrice,
           taxId: data.taxId,
           taxRate: rate
         };
 
-        setItems(prev => [...prev, newItem]);
+        updateItemsAndRecalculateDiscounts([...items, newItem]);
         setBarcodeInput('');
       } catch (error: any) {
         console.error('Scan failed:', error);
@@ -817,7 +998,7 @@ export const useSalesLogic = () => {
   // Handle Remove Item
   const handleRemoveItem = (id: string) => {
     if (formMode === 'VIEW' || formMode === 'LOCKED') return;
-    setItems(prev => prev.filter(item => item.id !== id));
+    updateItemsAndRecalculateDiscounts(items.filter(item => item.id !== id));
   };
 
   // Handle Update Qty
@@ -832,10 +1013,7 @@ export const useSalesLogic = () => {
       return;
     }
 
-    if (qty <= 0) {
-      handleRemoveItem(id);
-      return;
-    }
+    const sanitizedQty = isNaN(qty) || qty < 0 ? 0 : qty;
 
     // Cumulative stock checking validation
     if (!targetItem.isNoStockChecking) {
@@ -843,120 +1021,131 @@ export const useSalesLogic = () => {
         .filter(item => item.id !== id && (item.barcode === targetItem.barcode || (item.sourceCode && item.sourceCode === targetItem.sourceCode)))
         .reduce((sum, item) => sum + item.qty, 0);
       
-      if (otherQty + qty > targetItem.availableStock) {
+      if (otherQty + sanitizedQty > targetItem.availableStock) {
         setPopup({
           isOpen: true,
           type: 'warning',
           title: 'Insufficient Stock',
           message: `Available stock is ${targetItem.availableStock}.`,
           subMessage: otherQty > 0
-            ? `You have ${otherQty} in other rows. Setting this to ${qty} exceeds the limit.`
-            : `Requested quantity of ${qty} exceeds available limit.`
+            ? `You have ${otherQty} in other rows. Setting this to ${sanitizedQty} exceeds the limit.`
+            : `Requested quantity of ${sanitizedQty} exceeds available limit.`
         });
         return;
       }
     }
 
-    setItems(prev => prev.map(item => {
+    const nextItems = items.map(item => {
       if (item.id === id) {
-        const amount = (item.selPrice - item.discount) * qty;
-        const rate = item.taxRate || 0;
-        const taxAmt = (amount * rate) / 100;
         return {
           ...item,
-          qty,
-          amount,
-          taxAmt
+          qty: sanitizedQty
         };
       }
       return item;
-    }));
+    });
+    updateItemsAndRecalculateDiscounts(nextItems);
   };
 
   // Handle Update Discount
   const handleUpdateItemDiscountPercent = (id: string, percent: number) => {
     if (formMode === 'VIEW' || formMode === 'LOCKED') return;
-    setGlobalDiscountPercent(0);
-    setGlobalDiscountAmount(0);
-    setItems(prev => prev.map(item => {
+    const nextItems = items.map(item => {
       if (item.id === id) {
         const clampedPercent = Math.max(0, Math.min(100, percent || 0));
-        const discount = (item.selPrice * clampedPercent) / 100;
-        const amount = (item.selPrice - discount) * item.qty;
-        const rate = item.taxRate || 0;
-        const taxAmt = (amount * rate) / 100;
+        const discVal = (item.selPrice * clampedPercent) / 100;
         return {
           ...item,
-          discount,
-          amount,
-          taxAmt
+          rowDiscount: discVal,
+          discount: discVal
         };
       }
       return item;
-    }));
+    });
+    updateItemsAndRecalculateDiscounts(nextItems);
   };
 
   // Handle Update Discount
   const handleUpdateItemDiscount = (id: string, discount: number) => {
     if (formMode === 'VIEW' || formMode === 'LOCKED') return;
-    setGlobalDiscountPercent(0);
-    setGlobalDiscountAmount(0);
-    setItems(prev => prev.map(item => {
+    const nextItems = items.map(item => {
       if (item.id === id) {
         const clampedDiscount = Math.max(0, Math.min(item.selPrice, discount || 0));
-        const amount = (item.selPrice - clampedDiscount) * item.qty;
-        const rate = item.taxRate || 0;
-        const taxAmt = (amount * rate) / 100;
         return {
           ...item,
-          discount: clampedDiscount,
-          amount,
-          taxAmt
+          rowDiscount: clampedDiscount,
+          discount: clampedDiscount
         };
       }
       return item;
-    }));
+    });
+    updateItemsAndRecalculateDiscounts(nextItems);
+  };
+
+  const handleNoStockPriceSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      if (!pendingNoStockItem) return;
+      const price = parseFloat(noStockSelPrice);
+      if (isNaN(price) || price <= 0) {
+        setPopup({
+          isOpen: true,
+          type: 'warning',
+          title: 'Invalid Price',
+          message: 'Please enter a valid price greater than 0.'
+        });
+        return;
+      }
+
+      const rate = pendingNoStockItem.taxRate !== undefined && pendingNoStockItem.taxRate !== null ? Number(pendingNoStockItem.taxRate) : 0;
+
+      const newItem: LineItem = {
+        id: Date.now().toString(),
+        barcode: pendingNoStockItem.barcodedesc,
+        sourceCode: pendingNoStockItem.barcodeSourceBarcode,
+        productCode: pendingNoStockItem.productCode,
+        color: pendingNoStockItem.colorName,
+        isIndividual: false,
+        isNoStockChecking: true,
+        availableStock: pendingNoStockItem.availableStock || 0,
+        category: pendingNoStockItem.categoryDescription,
+        size: pendingNoStockItem.barcodeSize,
+        mrp: price,
+        selPrice: price,
+        discount: 0,
+        rowDiscount: 0,
+        hsn: pendingNoStockItem.hsnCode,
+        taxDesc: pendingNoStockItem.taxDesc || 'GST 0%',
+        taxAmt: 0,
+        qty: 1,
+        amount: price,
+        taxId: pendingNoStockItem.taxId,
+        taxRate: rate
+      };
+
+      updateItemsAndRecalculateDiscounts([...items, newItem]);
+      setPendingNoStockItem(null);
+      setNoStockSelPrice('');
+    }
+  };
+
+  const cancelNoStockItem = () => {
+    setPendingNoStockItem(null);
+    setNoStockSelPrice('');
   };
 
   // Apply Global Discount Percentage to all items
   const handleApplyGlobalDiscountPercent = useCallback((percent: number) => {
     if (formMode === 'VIEW' || formMode === 'LOCKED') return;
     const clampedPercent = Math.max(0, Math.min(100, percent || 0));
-    setGlobalDiscountPercent(clampedPercent);
-    setGlobalDiscountAmount(0); // Clear amount
-    setItems(prev => prev.map(item => {
-      const discount = (item.selPrice * clampedPercent) / 100;
-      const amount = (item.selPrice - discount) * item.qty;
-      const rate = item.taxRate || 0;
-      const taxAmt = (amount * rate) / 100;
-      return {
-        ...item,
-        discount,
-        amount,
-        taxAmt
-      };
-    }));
-  }, [formMode]);
+    updateItemsAndRecalculateDiscounts(items, 'percent', clampedPercent, 0);
+  }, [formMode, items, globalDiscountPercent, globalDiscountAmount, globalDiscountMode]);
 
   // Apply Global Discount Amount to all items
   const handleApplyGlobalDiscountAmount = useCallback((amount: number) => {
     if (formMode === 'VIEW' || formMode === 'LOCKED') return;
     const clampedAmount = Math.max(0, amount || 0);
-    setGlobalDiscountAmount(clampedAmount);
-    setGlobalDiscountPercent(0); // Clear percent
-    setItems(prev => prev.map(item => {
-      const discount = Math.min(item.selPrice, clampedAmount);
-      const amount = (item.selPrice - discount) * item.qty;
-      const rate = item.taxRate || 0;
-      const taxAmt = (amount * rate) / 100;
-      return {
-        ...item,
-        discount,
-        amount,
-        taxAmt
-      };
-    }));
-  }, [formMode]);
+    updateItemsAndRecalculateDiscounts(items, 'amount', 0, clampedAmount);
+  }, [formMode, items, globalDiscountPercent, globalDiscountAmount, globalDiscountMode]);
 
   // State for bill details popover
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
@@ -1030,6 +1219,11 @@ export const useSalesLogic = () => {
     handleBarcodeScan,
     handleRemoveItem,
     handleUpdateQty,
+    pendingNoStockItem,
+    noStockSelPrice,
+    setNoStockSelPrice,
+    handleNoStockPriceSubmit,
+    cancelNoStockItem,
     handleUpdateItemDiscount,
     handleUpdateItemDiscountPercent,
     purSalesmanId,
@@ -1043,6 +1237,8 @@ export const useSalesLogic = () => {
     handleApplyGlobalDiscountPercent,
     globalDiscountAmount,
     handleApplyGlobalDiscountAmount,
+    globalDiscountMode,
+    setGlobalDiscountMode,
     loadingInvoiceId,
     isSaving
   };

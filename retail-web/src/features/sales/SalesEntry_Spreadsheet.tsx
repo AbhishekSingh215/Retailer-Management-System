@@ -635,6 +635,12 @@ const SalesEntry: React.FC = () => {
                           value={item.qty === 0 ? '' : item.qty}
                           disabled={item.isIndividual}
                           onChange={(e) => handleUpdateQty(item.id, Number(e.target.value))}
+                          onBlur={(e) => {
+                            const val = Number(e.target.value);
+                            if (isNaN(val) || val <= 0) {
+                              handleUpdateQty(item.id, 1);
+                            }
+                          }}
                           className={`w-20 text-right bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.1] rounded-lg px-2 py-1 font-bold text-[13px] text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all ${item.isIndividual ? 'opacity-50 cursor-not-allowed' : ''}`}
                           min="1"
                         />

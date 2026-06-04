@@ -144,5 +144,40 @@ namespace RMS.API.Controllers
                 return StatusCode(500, new { message = "An internal error occurred during scan.", details = ex.Message });
             }
         }
+
+        [HttpGet("tax-rate")]
+        public async Task<IActionResult> GetTaxRate(
+            [FromQuery] string barcode,
+            [FromQuery] decimal price,
+            [FromQuery] long companyId = 1,
+            [FromQuery] bool isInterstate = false)
+        {
+            try
+            {
+                var bd = await _context.BarcodeDetails.FirstOrDefaultAsync(b => b.BarcodeDesc == barcode || b.BarcodeSourceBarcode == barcode);
+                var pm = bd != null ? await _context.ProductMasters.FirstOrDefaultAsync(p => p.ProductId == bd.BarcodeProductId) : null;
+
+                if (pm != null && pm.ProductHsnId.HasValue && pm.ProductHsnId.Value > 0)
+                {
+                    var tax = await SalesController.GetTaxForProductAsync(
+                        _context,
+                        pm.ProductHsnId.Value,
+                        price,
+                        DateTime.UtcNow,
+                        isInterstate,
+                        companyId);
+
+                    if (tax != null)
+                    {
+                        return Ok(new { taxId = tax.TaxId, taxRate = tax.TaxRate, taxDesc = tax.TaxDescription });
+                    }
+                }
+                return Ok(new { taxId = (long?)null, taxRate = 0, taxDesc = "GST 0%" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = ex.Message });
+            }
+        }
     }
 }

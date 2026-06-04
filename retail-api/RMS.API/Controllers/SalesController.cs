@@ -589,7 +589,7 @@ public class SalesController : ControllerBase
                     tax = await GetTaxForProductAsync(
                         _context, 
                         pm.ProductHsnId.Value, 
-                        item.SelPrice, 
+                        item.Amount, 
                         parsedDate, 
                         isInterstate, 
                         request.CompanyId);
