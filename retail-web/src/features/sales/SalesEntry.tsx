@@ -367,12 +367,6 @@ const SalesEntry: React.FC = () => {
           <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest">Disc.</span>
           <span className="text-[18px] font-[1000] text-rose-500 leading-none">-₹{totalDiscount.toLocaleString()}</span>
         </div>
-        <div className="flex flex-col gap-0.5">
-          <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Tax Amt</span>
-          <span className="text-[18px] font-[1000] text-indigo-500 leading-none" title={`CGST: ₹${cgstAmount.toFixed(2)} | SGST: ₹${sgstAmount.toFixed(2)} | IGST: ₹${igstAmount.toFixed(2)}`}>
-            ₹{totalTaxAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </span>
-        </div>
         <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Net Payable</span>
@@ -1161,7 +1155,7 @@ const SalesEntry: React.FC = () => {
 
                           <div className="p-4 pt-2 shrink-0">
                             <div className="w-full py-3 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[13px] font-extrabold rounded-xl border border-emerald-200 dark:border-emerald-500/20 flex items-center justify-center gap-2 shadow-sm">
-                              <CheckCircle2 className="w-4 h-4" /> Item Active in Current Sale (₹{lastScannedItem.amount.toLocaleString()})
+                              <CheckCircle2 className="w-4 h-4" /> Item Active in Current Sale (₹{(lastScannedItem.amount + (lastScannedItem.taxAmt || 0)).toLocaleString()})
                             </div>
                           </div>
                         </div>
@@ -1234,9 +1228,8 @@ const SalesEntry: React.FC = () => {
                             <span className="text-[9px] font-bold text-slate-300 dark:text-white/20 line-through">₹{item.mrp.toLocaleString()}</span>
                             <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">₹{item.selPrice.toLocaleString()} / unit</span>
                           </div>
-                          <div className="flex items-center gap-2 mt-1">
+                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded-md">{item.taxDesc}</span>
-                            <span className="text-[9px] font-extrabold text-slate-400">Tax: ₹{(item.taxAmt || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                           </div>
                         </div>
                         <div className="w-16 text-center">
@@ -1244,8 +1237,8 @@ const SalesEntry: React.FC = () => {
                             {item.qty}
                           </div>
                         </div>
-                        <div className="w-24 text-right flex flex-col items-end">
-                          <p className="text-[13px] font-extrabold text-gray-900 dark:text-white leading-none">₹{item.amount.toLocaleString()}</p>
+                         <div className="w-24 text-right flex flex-col items-end">
+                          <p className="text-[13px] font-extrabold text-gray-900 dark:text-white leading-none">₹{(item.amount + (item.taxAmt || 0)).toLocaleString()}</p>
                         </div>
                         {formMode !== 'VIEW' && formMode !== 'LOCKED' && (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1">

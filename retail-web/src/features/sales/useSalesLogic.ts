@@ -81,9 +81,10 @@ export const recalculateItems = (
     const globalDiscountPerUnit = (rateAfterRowDiscount * effectiveGlobalPct) / 100;
     const totalDiscountPerUnit = rowDiscountPerUnit + globalDiscountPerUnit;
     const finalRate = rateAfterRowDiscount - globalDiscountPerUnit;
-    const amount = finalRate * item.qty;
+    const taxInclusiveRowTotal = finalRate * item.qty;
     const taxRate = item.taxRate || 0;
-    const taxAmt = (amount * taxRate) / 100;
+    const amount = taxInclusiveRowTotal / (1 + taxRate / 100);
+    const taxAmt = taxInclusiveRowTotal - amount;
 
     return {
       ...item,
@@ -107,7 +108,7 @@ export const useSalesLogic = () => {
   const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
   const [formMode, setFormMode] = useState<'NEW' | 'VIEW' | 'EDIT' | 'LOCKED'>('NEW');
   const [currentPurId, setCurrentPurId] = useState<number | null>(null);
-  const isExclusiveBill = true;
+  const isExclusiveBill = false;
 
   // Salesman states
   const [purSalesmanId, setPurSalesmanId] = useState<number | null>(null);
@@ -649,9 +650,8 @@ export const useSalesLogic = () => {
       
       const globalDiscountPerUnit = (rateAfterRowDiscount * effectiveGlobalPct) / 100;
       const finalUnitRate = rateAfterRowDiscount - globalDiscountPerUnit;
-      const finalRowAmount = finalUnitRate * item.qty;
       
-      return item.lastTaxCalculatedPrice === undefined || Math.abs(item.lastTaxCalculatedPrice - finalRowAmount) > 0.01;
+      return item.lastTaxCalculatedPrice === undefined || Math.abs(item.lastTaxCalculatedPrice - finalUnitRate) > 0.01;
     });
 
     if (itemsNeedingLookup.length === 0) return;
@@ -676,13 +676,12 @@ export const useSalesLogic = () => {
         
         const globalDiscountPerUnit = (rateAfterRowDiscount * effectiveGlobalPct) / 100;
         const finalUnitRate = rateAfterRowDiscount - globalDiscountPerUnit;
-        const finalRowAmount = finalUnitRate * item.qty;
 
-        if (item.lastTaxCalculatedPrice === undefined || Math.abs(item.lastTaxCalculatedPrice - finalRowAmount) > 0.01) {
+        if (item.lastTaxCalculatedPrice === undefined || Math.abs(item.lastTaxCalculatedPrice - finalUnitRate) > 0.01) {
           try {
             const isIgst = item.taxDesc && item.taxDesc.toUpperCase().includes('IGST');
             const res = await fetch(
-              `${API_BASE_URL}/product/tax-rate?barcode=${encodeURIComponent(item.barcode)}&price=${finalRowAmount}&companyId=${companyId}&isInterstate=${isIgst}`
+              `${API_BASE_URL}/product/tax-rate?barcode=${encodeURIComponent(item.barcode)}&price=${finalUnitRate}&companyId=${companyId}&isInterstate=${isIgst}`
             );
             if (res.ok) {
               const data = await res.json();
@@ -692,7 +691,7 @@ export const useSalesLogic = () => {
                 taxRate: data.taxRate,
                 taxDesc: data.taxDesc,
                 taxId: data.taxId,
-                lastTaxCalculatedPrice: finalRowAmount
+                lastTaxCalculatedPrice: finalUnitRate
               };
             }
           } catch (err) {

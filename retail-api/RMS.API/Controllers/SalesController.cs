@@ -525,6 +525,7 @@ public class SalesController : ControllerBase
             header.PurBillNo = request.MobileNumber;   // Keep as fallback / billno
             header.PurSalesmanId = request.PurSalesmanId;
             header.PurVerify = request.Status == "LOCKED";
+            header.PurExclusiveBill = request.PurExclusiveBill ?? false;
             header.PurRecordModified = DateTime.UtcNow;
 
             await _context.SaveChangesAsync(); // Save header to generate PurId if new
@@ -582,6 +583,9 @@ public class SalesController : ControllerBase
                 var bd = await _context.BarcodeDetails.FirstOrDefaultAsync(b => b.BarcodeDesc == item.Barcode || b.BarcodeSourceBarcode == item.Barcode);
                 var pm = bd != null ? await _context.ProductMasters.FirstOrDefaultAsync(p => p.ProductId == bd.BarcodeProductId) : null;
 
+                decimal taxInclusiveUnitPrice = item.SelPrice - item.Discount;
+                decimal taxInclusiveAmount = taxInclusiveUnitPrice * item.Qty;
+
                 // Lookup HSN and TaxMaster details
                 TaxMaster? tax = null;
                 if (pm != null && pm.ProductHsnId.HasValue && pm.ProductHsnId.Value > 0)
@@ -589,7 +593,7 @@ public class SalesController : ControllerBase
                     tax = await GetTaxForProductAsync(
                         _context, 
                         pm.ProductHsnId.Value, 
-                        item.Amount, 
+                        taxInclusiveUnitPrice, 
                         parsedDate, 
                         isInterstate, 
                         request.CompanyId);
@@ -606,18 +610,30 @@ public class SalesController : ControllerBase
                     {
                         taxRate1 = tax.TaxCgst.Value;
                         taxRate2 = tax.TaxSgst ?? 0;
-                        taxamount1 = Math.Round(item.Amount * taxRate1 / 100, 4);
-                        taxamount2 = Math.Round(item.Amount * taxRate2 / 100, 4);
-
-                        totalCgst += taxamount1;
-                        totalSgst += taxamount2;
                     }
                     else if (tax.TaxIgst.HasValue && tax.TaxIgst.Value > 0)
                     {
                         taxRate1 = tax.TaxIgst.Value;
                         taxRate2 = 0;
-                        taxamount1 = Math.Round(item.Amount * taxRate1 / 100, 4);
+                    }
+                }
 
+                decimal totalTaxRate = taxRate1 + taxRate2;
+                decimal baseAmount = taxInclusiveAmount / (1 + totalTaxRate / 100);
+                decimal totalTax = taxInclusiveAmount - baseAmount;
+
+                if (totalTaxRate > 0)
+                {
+                    taxamount1 = Math.Round(totalTax * (taxRate1 / totalTaxRate), 4);
+                    taxamount2 = Math.Round(totalTax * (taxRate2 / totalTaxRate), 4);
+
+                    if (taxRate2 > 0)
+                    {
+                        totalCgst += taxamount1;
+                        totalSgst += taxamount2;
+                    }
+                    else
+                    {
                         totalIgst += taxamount1;
                     }
                 }
@@ -638,7 +654,7 @@ public class SalesController : ControllerBase
                     PurtSelPrice = item.SelPrice,
                     PurtDiscAmount = item.Discount,
                     PurtCreditQty = item.Qty,
-                    PurtCreditAmount = item.Amount,
+                    PurtCreditAmount = baseAmount,
                     PurtHsnId = pm?.ProductHsnId,
                     PurtTaxId = tax?.TaxId,
                     PurtTaxRate1 = taxRate1,
@@ -661,7 +677,7 @@ public class SalesController : ControllerBase
             header.PurSgstAmount = totalSgst;
             header.PurIgstAmount = totalIgst;
 
-            header.PurNetAmount = request.Items.Sum(i => i.Amount) + totalCgst + totalSgst + totalIgst;
+            header.PurNetAmount = request.Items.Sum(i => (i.SelPrice - i.Discount) * i.Qty);
 
             await _context.SaveChangesAsync();
 

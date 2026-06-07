@@ -703,12 +703,6 @@ const SalesEntry: React.FC = () => {
               <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest">Disc.</span>
               <span className="text-[18px] font-[1000] text-rose-500 leading-none">-₹{totalDiscount.toLocaleString()}</span>
             </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Tax Amt</span>
-              <span className="text-[18px] font-[1000] text-indigo-500 leading-none" title={`CGST: ₹${cgstAmount.toFixed(2)} | SGST: ₹${sgstAmount.toFixed(2)} | IGST: ₹${igstAmount.toFixed(2)}`}>
-                ₹{totalTaxAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
             <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Net Payable</span>
