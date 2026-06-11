@@ -37,6 +37,21 @@ public class SalesController : ControllerBase
         return Ok(salesmen);
     }
 
+    [HttpGet("payment-types")]
+    public async Task<IActionResult> GetPaymentTypes()
+    {
+        var types = await _context.PaymentTypes
+            .AsNoTracking()
+            .OrderBy(p => p.PaymentTypeId)
+            .Select(p => new
+            {
+                id = p.PaymentTypeId,
+                name = p.PaymentTypeName
+            })
+            .ToListAsync();
+        return Ok(types);
+    }
+
     [HttpGet("next-docno")]
     public async Task<IActionResult> GetNextDocNo([FromQuery] long companyId = 1, [FromQuery] long companyCount = 1)
     {
@@ -289,7 +304,7 @@ public class SalesController : ControllerBase
             });
         }
 
-        return Ok(new SalesInvoiceDto
+            return Ok(new SalesInvoiceDto
         {
             PurId = header.PurId,
             CompanyId = header.PurCompanyId ?? 1,
@@ -306,7 +321,26 @@ public class SalesController : ControllerBase
             SalesmanName = salesman?.SalesmanName ?? "",
             Status = header.PurVerify == true ? "LOCKED" : "EDIT",
             PurExclusiveBill = header.PurExclusiveBill,
-            Items = items
+            PurCreditBill = header.PurCreditBill,
+            PurCashAmount = header.PurCashAmount,
+            PurCardAmount = header.PurCardAmount,
+            PurUpiAmount = header.PurUpiAmount,
+            PurAdvanceAmount = header.PurAdvanceAmount,
+            PurReceiptAmount = header.PurReceiptAmount,
+            Items = items,
+            Payments = await _context.PaymentTypes
+                .AsNoTracking()
+                .Select(pt => new PaymentAmountDto
+                {
+                    PaymentTypeId = pt.PaymentTypeId,
+                    PaymentTypeName = pt.PaymentTypeName,
+                    Amount = pt.PaymentTypeName.ToLower().Contains("cash") ? (header.PurCashAmount ?? 0) :
+                             pt.PaymentTypeName.ToLower().Contains("card") ? (header.PurCardAmount ?? 0) :
+                             pt.PaymentTypeName.ToLower().Contains("upi") ? (header.PurUpiAmount ?? 0) :
+                             pt.PaymentTypeName.ToLower().Contains("advance") ? (header.PurAdvanceAmount ?? 0) :
+                             pt.PaymentTypeName.ToLower().Contains("bank") ? (header.PurReceiptAmount ?? 0) : 0
+                })
+                .ToListAsync()
         });
     }
 
@@ -337,6 +371,7 @@ public class SalesController : ControllerBase
                     .Where(b => barcodeKeys.Contains(b.BarcodeDesc) || barcodeKeys.Contains(b.BarcodeSourceBarcode))
                     .ToListAsync();
 
+                
                 var barcodeProductIds = bds.Select(b => b.BarcodeProductId).Where(id => id.HasValue).Select(id => id.Value).Distinct().ToList();
 
                 // Fetch all ProductMasters in one query
@@ -526,7 +561,34 @@ public class SalesController : ControllerBase
             header.PurSalesmanId = request.PurSalesmanId;
             header.PurVerify = request.Status == "LOCKED";
             header.PurExclusiveBill = request.PurExclusiveBill ?? false;
-            header.PurRecordModified = DateTime.UtcNow;
+            header.PurCreditBill = request.PurCreditBill ?? false;
+            if (request.Payments != null && request.Payments.Any())
+            {
+                header.PurCashAmount = 0;
+                header.PurCardAmount = 0;
+                header.PurUpiAmount = 0;
+                header.PurAdvanceAmount = 0;
+                header.PurReceiptAmount = 0;
+
+                foreach (var p in request.Payments)
+                {
+                    var name = p.PaymentTypeName.ToLower();
+                    if (name.Contains("cash")) header.PurCashAmount = p.Amount;
+                    else if (name.Contains("card")) header.PurCardAmount = p.Amount;
+                    else if (name.Contains("upi")) header.PurUpiAmount = p.Amount;
+                    else if (name.Contains("advance")) header.PurAdvanceAmount = p.Amount;
+                    else if (name.Contains("bank")) header.PurReceiptAmount = p.Amount;
+                }
+            }
+            else
+            {
+                header.PurCashAmount = request.PurCashAmount;
+                header.PurCardAmount = request.PurCardAmount;
+                header.PurUpiAmount = request.PurUpiAmount;
+                header.PurAdvanceAmount = request.PurAdvanceAmount;
+                header.PurReceiptAmount = request.PurReceiptAmount;
+            }
+                header.PurRecordModified = DateTime.UtcNow;
 
             await _context.SaveChangesAsync(); // Save header to generate PurId if new
 
@@ -677,7 +739,10 @@ public class SalesController : ControllerBase
             header.PurSgstAmount = totalSgst;
             header.PurIgstAmount = totalIgst;
 
-            header.PurNetAmount = request.Items.Sum(i => (i.SelPrice - i.Discount) * i.Qty);
+            decimal rawNetAmount = request.Items.Sum(i => (i.SelPrice - i.Discount) * i.Qty);
+            decimal roundedNetAmount = Math.Round(rawNetAmount);
+            header.PurRoundoff = roundedNetAmount - rawNetAmount;
+            header.PurNetAmount = roundedNetAmount;
 
             await _context.SaveChangesAsync();
 

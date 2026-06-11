@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { API_BASE_URL } from '../../config/apiConfig';
 
 export interface Customer {
@@ -110,11 +110,30 @@ export const useSalesLogic = () => {
   const [currentPurId, setCurrentPurId] = useState<number | null>(null);
   const isExclusiveBill = false;
 
+  // Payment split states
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<number, number>>({});
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isCredit, setIsCredit] = useState(false);
+
   // Salesman states
   const [purSalesmanId, setPurSalesmanId] = useState<number | null>(null);
   const [salesmenList, setSalesmenList] = useState<{ id: number; name: string; code?: string }[]>([]);
   const [salesmanSearch, setSalesmanSearch] = useState('');
   const [isSalesmanDropdownOpen, setIsSalesmanDropdownOpen] = useState(false);
+
+  const [paymentTypes, setPaymentTypes] = useState<{ id: number; name: string }[]>([]);
+
+  const fetchPaymentTypes = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/sales/payment-types`);
+      if (res.ok) {
+        const data = await res.json();
+        setPaymentTypes(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch payment types:", err);
+    }
+  }, []);
 
   const fetchSalesmen = useCallback(async () => {
     try {
@@ -140,6 +159,46 @@ export const useSalesLogic = () => {
 
   // Cart line items
   const [items, setItems] = useState<LineItem[]>([]);
+
+  // Global Bulk Discount Percentage State
+  const [globalDiscountPercent, setGlobalDiscountPercent] = useState<number>(0);
+  // Global Bulk Discount Amount State
+  const [globalDiscountAmount, setGlobalDiscountAmount] = useState<number>(0);
+  // Global Discount Mode State
+  const [globalDiscountMode, setGlobalDiscountMode] = useState<'percent' | 'amount'>('percent');
+
+  // Generate a copy of items with the global discount distributed for tax / totals / backend saving
+  const distributedItems = useMemo(() => {
+    return recalculateItems(items, globalDiscountPercent, globalDiscountAmount);
+  }, [items, globalDiscountPercent, globalDiscountAmount]);
+
+  // Dynamic Calculations for Totals & Footer
+  const totalQty = distributedItems.reduce((sum, item) => sum + item.qty, 0);
+  const grossAmount = items.reduce((sum, item) => sum + item.amount + (item.taxAmt || 0), 0);
+  const totalDiscount = items.reduce((sum, item) => sum + (item.discount * item.qty), 0);
+  const totalTaxAmt = distributedItems.reduce((sum, item) => sum + (item.taxAmt || 0), 0);
+  const rawNetPayable = distributedItems.reduce((sum, item) => sum + item.amount, 0) + totalTaxAmt;
+  const netPayable = Math.round(rawNetPayable);
+  const roundOff = Number((netPayable - rawNetPayable).toFixed(2));
+  const subtotalExclTax = distributedItems.reduce((sum, item) => sum + item.amount, 0);
+
+  let cgstAmount = 0;
+  let sgstAmount = 0;
+  let igstAmount = 0;
+
+  distributedItems.forEach(item => {
+    const isIgst = item.taxDesc && item.taxDesc.toUpperCase().includes('IGST');
+    const itemTax = item.taxAmt || 0;
+    if (isIgst) {
+      igstAmount += itemTax;
+    } else {
+      cgstAmount += itemTax / 2;
+      sgstAmount += itemTax / 2;
+    }
+  });
+
+  // Last Scanned Item for Modern View Preview Card
+  const lastScannedItem = items[items.length - 1] || null;
 
   // Saved invoices list from backend
   const [savedInvoicesList, setSavedInvoicesList] = useState<SavedInvoice[]>([]);
@@ -211,8 +270,9 @@ export const useSalesLogic = () => {
   useEffect(() => {
     fetchNextDocNo();
     fetchSalesmen();
+    fetchPaymentTypes();
     // Intentionally omit fetchHistory here so we only fetch when modal opens
-  }, [fetchNextDocNo, fetchSalesmen]);
+  }, [fetchNextDocNo, fetchSalesmen, fetchPaymentTypes]);
 
   useEffect(() => {
     if (isHistoryOpen) {
@@ -245,6 +305,9 @@ export const useSalesLogic = () => {
     setGlobalDiscountPercent(0);
     setGlobalDiscountAmount(0);
     setGlobalDiscountMode('percent');
+    setPaymentAmounts({});
+    setIsPaymentModalOpen(false);
+    setIsCredit(false);
   }, [fetchNextDocNo]);
 
   const performLoadInvoice = useCallback(async (inv: SavedInvoice) => {
@@ -266,6 +329,24 @@ export const useSalesLogic = () => {
         setGlobalDiscountAmount(0);
         setGlobalDiscountMode('percent');
         setFormMode('VIEW');
+        const loadedAmounts: Record<number, number> = {};
+        const payments = data.payments || data.Payments || [];
+        payments.forEach((p: any) => {
+          loadedAmounts[p.paymentTypeId] = p.amount;
+        });
+        if (payments.length === 0 && paymentTypes.length > 0) {
+          paymentTypes.forEach(t => {
+            const name = t.name.toLowerCase();
+            if (name.includes('cash')) loadedAmounts[t.id] = data.purCashAmount || data.PurCashAmount || 0;
+            else if (name.includes('card')) loadedAmounts[t.id] = data.purCardAmount || data.PurCardAmount || 0;
+            else if (name.includes('upi')) loadedAmounts[t.id] = data.purUpiAmount || data.PurUpiAmount || 0;
+            else if (name.includes('advance')) loadedAmounts[t.id] = data.purAdvanceAmount || data.PurAdvanceAmount || 0;
+            else if (name.includes('bank')) loadedAmounts[t.id] = data.purReceiptAmount || data.PurReceiptAmount || 0;
+          });
+        }
+        setPaymentAmounts(loadedAmounts);
+        setIsPaymentModalOpen(false);
+        setIsCredit(data.purCreditBill || data.PurCreditBill || false);
         const rawItems = data.items || data.Items || [];
         const loadedItems: LineItem[] = rawItems.map((i: any) => ({
           id: i.id || i.Id || Date.now().toString(),
@@ -312,7 +393,7 @@ export const useSalesLogic = () => {
     } finally {
       setLoadingInvoiceId(null);
     }
-  }, [loadingInvoiceId]);
+  }, [loadingInvoiceId, paymentTypes]);
 
   const saveToBackend = useCallback(async (targetStatus: 'EDIT' | 'LOCKED') => {
     if (items.length === 0) {
@@ -348,12 +429,23 @@ export const useSalesLogic = () => {
       customerName: customerName || "Walk-in Customer",
       mobileNumber,
       purSalesmanId,
-      grossAmount: items.reduce((sum, i) => sum + (i.mrp * i.qty), 0),
-      discountAmount: items.reduce((sum, i) => sum + (i.discount * i.qty), 0),
-      netAmount: items.reduce((sum, i) => sum + i.amount, 0),
-      totalQty: items.reduce((sum, i) => sum + i.qty, 0),
+      grossAmount: distributedItems.reduce((sum, i) => sum + (i.mrp * i.qty), 0),
+      discountAmount: distributedItems.reduce((sum, i) => sum + (i.discount * i.qty), 0),
+      netAmount: distributedItems.reduce((sum, i) => sum + i.amount, 0),
+      totalQty: distributedItems.reduce((sum, i) => sum + i.qty, 0),
       status: targetStatus,
-      items: items.map(i => ({
+      purCreditBill: isCredit,
+      payments: paymentTypes.map(t => ({
+        paymentTypeId: t.id,
+        paymentTypeName: t.name,
+        amount: paymentAmounts[t.id] || 0
+      })),
+      purCashAmount: paymentTypes.filter(t => t.name.toLowerCase().includes('cash')).reduce((sum, t) => sum + (paymentAmounts[t.id] || 0), 0),
+      purCardAmount: paymentTypes.filter(t => t.name.toLowerCase().includes('card')).reduce((sum, t) => sum + (paymentAmounts[t.id] || 0), 0),
+      purUpiAmount: paymentTypes.filter(t => t.name.toLowerCase().includes('upi')).reduce((sum, t) => sum + (paymentAmounts[t.id] || 0), 0),
+      purAdvanceAmount: paymentTypes.filter(t => t.name.toLowerCase().includes('advance')).reduce((sum, t) => sum + (paymentAmounts[t.id] || 0), 0),
+      purReceiptAmount: paymentTypes.filter(t => t.name.toLowerCase().includes('bank')).reduce((sum, t) => sum + (paymentAmounts[t.id] || 0), 0),
+      items: distributedItems.map(i => ({
         id: i.id,
         barcode: i.barcode,
         sourceCode: i.sourceCode,
@@ -422,7 +514,7 @@ export const useSalesLogic = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [currentPurId, companyId, companyCount, docNo, docDate, customerName, mobileNumber, purSalesmanId, items, fetchHistory, performLoadInvoice]);
+  }, [currentPurId, companyId, companyCount, docNo, docDate, customerName, mobileNumber, purSalesmanId, items, fetchHistory, performLoadInvoice, paymentAmounts, paymentTypes]);
 
   const handleNewSale = useCallback(() => {
     if ((formMode === 'NEW' || formMode === 'EDIT') && items.length > 0) {
@@ -511,17 +603,17 @@ export const useSalesLogic = () => {
       return;
     }
     if (formMode === 'VIEW' || formMode === 'LOCKED') {
-      setPopup({
-        isOpen: true,
-        type: 'warning',
-        title: 'Invoice Locked',
-        message: formMode === 'LOCKED' ? 'This invoice is already locked (completed) and cannot be modified.' : 'This invoice is currently in Lock Mode.',
-        subMessage: formMode === 'LOCKED' ? 'Click "New (F2)" to start a fresh transaction.' : 'Please click the "Edit" button to unlock the form before completing sale.'
-      });
+      setIsPaymentModalOpen(true);
       return;
     }
-    saveToBackend('LOCKED');
-  }, [formMode, items.length, saveToBackend, isSaving]);
+    const cashType = paymentTypes.find(t => t.name.toLowerCase().includes('cash'));
+    const initialAmounts: Record<number, number> = {};
+    if (cashType) {
+      initialAmounts[cashType.id] = netPayable;
+    }
+    setPaymentAmounts(initialAmounts);
+    setIsPaymentModalOpen(true);
+  }, [formMode, items.length, isSaving, netPayable, paymentTypes]);
 
   // Keyboard Shortcuts (F2 New, F3 Load, F10 Complete, F12 Save)
   useEffect(() => {
@@ -565,12 +657,7 @@ export const useSalesLogic = () => {
   // State for Layout Toggle
   const [viewMode, setViewMode] = useState<'modern' | 'classic'>('classic');
 
-  // Global Bulk Discount Percentage State
-  const [globalDiscountPercent, setGlobalDiscountPercent] = useState<number>(0);
-  // Global Bulk Discount Amount State
-  const [globalDiscountAmount, setGlobalDiscountAmount] = useState<number>(0);
-  // Global Discount Mode State
-  const [globalDiscountMode, setGlobalDiscountMode] = useState<'percent' | 'amount'>('percent');
+
 
   // Helper to calculate bidirectional discounts and update items
   const updateItemsAndRecalculateDiscounts = (
@@ -596,7 +683,7 @@ export const useSalesLogic = () => {
     setGlobalDiscountPercent(finalPct);
     setGlobalDiscountAmount(finalAmt);
     setGlobalDiscountMode(mode);
-    setItems(recalculateItems(newItems, finalPct, 0));
+    setItems(recalculateItems(newItems, 0, 0));
   };
 
   // Customer Search States
@@ -765,31 +852,7 @@ export const useSalesLogic = () => {
   const [pendingNoStockItem, setPendingNoStockItem] = useState<any | null>(null);
   const [noStockSelPrice, setNoStockSelPrice] = useState<string>('');
 
-  // Dynamic Calculations for Totals & Footer
-  const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
-  const grossAmount = items.reduce((sum, item) => sum + (item.mrp * item.qty), 0);
-  const totalDiscount = items.reduce((sum, item) => sum + (item.discount * item.qty), 0);
-  const totalTaxAmt = items.reduce((sum, item) => sum + (item.taxAmt || 0), 0);
-  const netPayable = items.reduce((sum, item) => sum + item.amount, 0) + totalTaxAmt;
-  const subtotalExclTax = items.reduce((sum, item) => sum + item.amount, 0);
-
-  let cgstAmount = 0;
-  let sgstAmount = 0;
-  let igstAmount = 0;
-
-  items.forEach(item => {
-    const isIgst = item.taxDesc && item.taxDesc.toUpperCase().includes('IGST');
-    const itemTax = item.taxAmt || 0;
-    if (isIgst) {
-      igstAmount += itemTax;
-    } else {
-      cgstAmount += itemTax / 2;
-      sgstAmount += itemTax / 2;
-    }
-  });
-
-  // Last Scanned Item for Modern View Preview Card
-  const lastScannedItem = items[items.length - 1] || null;
+  // (calculations moved up)
 
   // Handle Barcode Scan Logic
   const handleBarcodeScan = async (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1081,6 +1144,26 @@ export const useSalesLogic = () => {
     updateItemsAndRecalculateDiscounts(nextItems);
   };
 
+  // Handle Update SelPrice (only for NoStockChecking items — also updates MRP)
+  const handleUpdateItemSelPrice = (id: string, newPrice: number) => {
+    if (formMode === 'VIEW' || formMode === 'LOCKED') return;
+    const targetItem = items.find(item => item.id === id);
+    if (!targetItem || !targetItem.isNoStockChecking) return;
+    const sanitizedPrice = isNaN(newPrice) || newPrice < 0 ? 0 : newPrice;
+    const nextItems = items.map(item => {
+      if (item.id === id) {
+        return {
+          ...item,
+          selPrice: sanitizedPrice,
+          mrp: sanitizedPrice,
+          amount: sanitizedPrice * item.qty
+        };
+      }
+      return item;
+    });
+    updateItemsAndRecalculateDiscounts(nextItems);
+  };
+
   const handleNoStockPriceSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       if (!pendingNoStockItem) return;
@@ -1198,6 +1281,7 @@ export const useSalesLogic = () => {
     grossAmount,
     totalDiscount,
     netPayable,
+    roundOff,
     subtotalExclTax,
     cgstAmount,
     sgstAmount,
@@ -1225,6 +1309,7 @@ export const useSalesLogic = () => {
     cancelNoStockItem,
     handleUpdateItemDiscount,
     handleUpdateItemDiscountPercent,
+    handleUpdateItemSelPrice,
     purSalesmanId,
     setPurSalesmanId,
     salesmenList,
@@ -1239,6 +1324,13 @@ export const useSalesLogic = () => {
     globalDiscountMode,
     setGlobalDiscountMode,
     loadingInvoiceId,
-    isSaving
+    isSaving,
+    paymentAmounts,
+    setPaymentAmounts,
+    isPaymentModalOpen,
+    setIsPaymentModalOpen,
+    isCredit,
+    setIsCredit,
+    paymentTypes
   };
 };

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useSalesLogic } from './useSalesLogic';
 import { LoadInvoiceModal } from './components/LoadInvoiceModal';
+import { SettlePaymentPanel } from './components/SettlePaymentPanel';
 
 const SalesEntry: React.FC = () => {
   const {
@@ -39,6 +40,7 @@ const SalesEntry: React.FC = () => {
     grossAmount,
     totalDiscount,
     netPayable,
+    roundOff,
     searchResults,
     showResults,
     setShowResults,
@@ -56,6 +58,8 @@ const SalesEntry: React.FC = () => {
     handleRemoveItem,
     handleUpdateQty,
     handleUpdateItemDiscountPercent,
+    handleUpdateItemDiscount,
+    handleUpdateItemSelPrice,
     purSalesmanId,
     setPurSalesmanId,
     salesmenList,
@@ -73,12 +77,15 @@ const SalesEntry: React.FC = () => {
     handleApplyGlobalDiscountAmount,
     loadingInvoiceId,
     isSaving,
-    cgstAmount,
-    sgstAmount,
-    igstAmount
+    paymentAmounts,
+    setPaymentAmounts,
+    isPaymentModalOpen,
+    setIsPaymentModalOpen,
+    isCredit,
+    setIsCredit,
+    paymentTypes,
+    saveToBackend
   } = useSalesLogic();
-
-  const totalTaxAmt = cgstAmount + sgstAmount + igstAmount;
 
   // --- CUSTOM DATE PICKER STATE & COMPONENT ---
 
@@ -330,7 +337,7 @@ const SalesEntry: React.FC = () => {
 
         {/* Flex Wrapping Input Row */}
         <div className="flex flex-wrap items-center gap-4 bg-slate-50/50 dark:bg-white/[0.01] border border-slate-200 dark:border-white/[0.05] rounded-2xl p-3 shadow-inner">
-          
+
           {/* Doc No */}
           <div className="flex flex-col gap-1 min-w-[120px]">
             <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
@@ -576,7 +583,7 @@ const SalesEntry: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-white/[0.02] bg-white dark:bg-transparent">
-              
+
               {/* Cart Items */}
               {items.map((item, index) => (
                 <tr key={item.id} className="hover:bg-indigo-50/30 dark:hover:bg-white/[0.02] border-b border-slate-100 dark:border-white/[0.05] transition-colors group">
@@ -589,7 +596,7 @@ const SalesEntry: React.FC = () => {
                   <td className="px-4 py-2.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border-r border-slate-100 dark:border-white/[0.03]">{item.size}</td>
                   <td className="px-4 py-2.5 text-center border-r border-slate-100 dark:border-white/[0.03]">
                     <div className="flex justify-center">
-                      <div 
+                      <div
                         className={`w-8 h-4 rounded-full p-0.5 transition-all duration-300 flex items-center ${item.isIndividual ? 'bg-indigo-600 dark:bg-indigo-500' : 'bg-slate-300 dark:bg-slate-700'} cursor-not-allowed`}
                         title={item.isIndividual ? 'Individual Item' : 'Standard Pack Item'}
                       >
@@ -598,14 +605,36 @@ const SalesEntry: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 text-right border-r border-slate-100 dark:border-white/[0.03]">₹{item.mrp.toFixed(2)}</td>
-                  <td className="px-4 py-2.5 text-[13px] font-bold text-slate-900 dark:text-slate-100 text-right border-r border-slate-100 dark:border-white/[0.03]">₹{item.selPrice.toFixed(2)}</td>
+                  <td className="px-4 py-2 border-r border-slate-100 dark:border-white/[0.03] text-right">
+                    {item.isNoStockChecking && formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                      <div className="flex items-center justify-end w-full">
+                        <div className="inline-flex items-center justify-between border border-amber-300 dark:border-amber-500/30 rounded-lg bg-amber-50 dark:bg-amber-500/10 px-2 py-1 w-[100px] focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-500 transition-all">
+                          <span className="text-[13px] font-bold text-amber-500 mr-1 select-none">₹</span>
+                          <input
+                            type="number"
+                            value={item.selPrice}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleUpdateItemSelPrice(item.id, Number(e.target.value))}
+                            className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-amber-700 dark:text-amber-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
+                            min="0"
+                            step="0.01"
+                            placeholder="0"
+                            title="Editable — No Stock Check item"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-[13px] font-bold text-slate-900 dark:text-slate-100">₹{item.selPrice.toFixed(2)}</span>
+                    )}
+                  </td>
                   <td className="px-4 py-2 border-r border-slate-100 dark:border-white/[0.03] text-right">
                     {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
                       <div className="flex items-center justify-end w-full">
                         <div className="inline-flex items-center justify-between border border-slate-200 dark:border-white/[0.1] rounded-lg bg-slate-50 dark:bg-white/[0.02] px-2 py-1 w-[80px] focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all">
                           <input
                             type="number"
-                            value={item.selPrice > 0 ? (item.discount === 0 ? '' : ((item.discount / item.selPrice) * 100).toFixed(2).replace(/\.00$/, '')) : ''}
+                            value={item.selPrice > 0 ? (Math.round(((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) / item.selPrice) * 100 * 100) / 100) : 0}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) => handleUpdateItemDiscountPercent(item.id, Number(e.target.value))}
                             className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-slate-800 dark:text-slate-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
                             min="0"
@@ -618,12 +647,35 @@ const SalesEntry: React.FC = () => {
                       </div>
                     ) : (
                       <span className="inline-block text-[13px] font-bold text-slate-750 dark:text-slate-200 pr-[9px]">
-                        {item.selPrice > 0 ? ((item.discount / item.selPrice) * 100).toFixed(2) : '0.00'}%
+                        {item.selPrice > 0 ? (((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) / item.selPrice) * 100).toFixed(2) : '0.00'}%
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-[13px] font-bold text-rose-600 dark:text-rose-400 text-right border-r border-slate-100 dark:border-white/[0.03]">₹{item.discount.toFixed(2)}</td>
-                  <td className="px-4 py-2.5 text-[13px] font-bold text-slate-900 dark:text-slate-100 text-right border-r border-slate-100 dark:border-white/[0.03]">₹{(item.selPrice - item.discount).toFixed(2)}</td>
+                  <td className="px-4 py-2 border-r border-slate-100 dark:border-white/[0.03] text-right">
+                    {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                      <div className="flex items-center justify-end w-full">
+                        <div className="inline-flex items-center justify-between border border-slate-200 dark:border-white/[0.1] rounded-lg bg-slate-50 dark:bg-white/[0.02] px-2 py-1 w-[95px] focus-within:ring-2 focus-within:ring-rose-500/20 focus-within:border-rose-500 transition-all">
+                          <input
+                            type="number"
+                            value={item.rowDiscount !== undefined ? item.rowDiscount : item.discount}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleUpdateItemDiscount(item.id, Number(e.target.value))}
+                            className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-rose-600 dark:text-rose-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
+                            min="0"
+                            max={item.selPrice}
+                            step="0.01"
+                            placeholder="0"
+                          />
+                          <span className="text-[13px] font-bold text-rose-500 ml-1 select-none">₹</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="inline-block text-[13px] font-bold text-rose-600 dark:text-rose-400 pr-[9px]">
+                        ₹{(item.rowDiscount !== undefined ? item.rowDiscount : item.discount).toFixed(2)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-[13px] font-bold text-slate-900 dark:text-slate-100 text-right border-r border-slate-100 dark:border-white/[0.03]">₹{(item.selPrice - (item.rowDiscount !== undefined ? item.rowDiscount : item.discount)).toFixed(2)}</td>
                   <td className="px-4 py-2.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border-r border-slate-100 dark:border-white/[0.03]">{item.hsn}</td>
                   <td className="px-4 py-2.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border-r border-slate-100 dark:border-white/[0.03]">{item.taxDesc}</td>
                   <td className="px-4 py-2.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 text-right border-r border-slate-100 dark:border-white/[0.03]">₹{item.taxAmt.toFixed(2)}</td>
@@ -632,7 +684,8 @@ const SalesEntry: React.FC = () => {
                       <div className="flex items-center justify-end w-full">
                         <input
                           type="number"
-                          value={item.qty === 0 ? '' : item.qty}
+                          value={item.qty}
+                          onFocus={(e) => e.target.select()}
                           disabled={item.isIndividual}
                           onChange={(e) => handleUpdateQty(item.id, Number(e.target.value))}
                           onBlur={(e) => {
@@ -697,66 +750,71 @@ const SalesEntry: React.FC = () => {
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Gross Amt</span>
-              <span className="text-[18px] font-[1000] text-gray-900 dark:text-white leading-none">₹{grossAmount.toLocaleString()}</span>
+              <span className="text-[18px] font-[1000] text-gray-900 dark:text-white leading-none">₹{grossAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest">Disc.</span>
-              <span className="text-[18px] font-[1000] text-rose-500 leading-none">-₹{totalDiscount.toLocaleString()}</span>
+              <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest">Item Disc</span>
+              <span className="text-[18px] font-[1000] text-rose-500 leading-none">-₹{totalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
+            <div className="flex flex-col gap-0.5 w-[115px] -mt-1">
+              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center whitespace-nowrap">
+                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Disc %
+              </span>
+              <div className="relative mt-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  placeholder="0"
+                  value={globalDiscountPercent ? Math.round(globalDiscountPercent * 100) / 100 : 0}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
+                  }}
+                  disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
+                  className="w-full pl-2 pr-6 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70 disabled:cursor-not-allowed"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">%</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-0.5 w-[115px] -mt-1">
+              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center whitespace-nowrap">
+                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Disc Amt
+              </span>
+              <div className="relative mt-1">
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={globalDiscountAmount ? Math.round(globalDiscountAmount * 100) / 100 : 0}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);
+                  }}
+                  disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
+                  className="w-full pl-5 pr-2 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70 disabled:cursor-not-allowed"
+                />
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">₹</span>
+              </div>
             </div>
             <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Net Payable</span>
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Round Off</span>
+              <span className={`text-[18px] font-[1000] leading-none ${roundOff > 0 ? 'text-emerald-600 dark:text-emerald-400' : roundOff < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-white'}`}>
+                {roundOff > 0 ? '+' : roundOff < 0 ? '-' : ''}₹{Math.abs(roundOff).toFixed(2)}
+              </span>
+            </div>
+            <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Net Amount</span>
               <div className="flex items-baseline gap-1">
                 <span className="text-[16px] font-black text-emerald-600 leading-none">₹</span>
                 <span className="text-[36px] font-[1000] text-emerald-600 leading-none tracking-tighter">{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
             </div>
-            {(formMode === 'NEW' || formMode === 'EDIT') && (
-              <>
-                <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
-                <div className="flex flex-col gap-0.5 w-[85px] -mt-1">
-                  <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center">
-                    <Tag className="w-3 h-3 text-rose-500" /> Bulk %
-                  </span>
-                  <div className="relative mt-1">
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      placeholder="0"
-                      value={globalDiscountPercent || ''}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
-                      }}
-                      disabled={false}
-                      className="w-full pl-2 pr-6 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">%</span>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-0.5 w-[90px] -mt-1">
-                  <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center">
-                    <Tag className="w-3 h-3 text-rose-500" /> Bulk Amt
-                  </span>
-                  <div className="relative mt-1">
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={globalDiscountAmount || ''}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);
-                      }}
-                      disabled={false}
-                      className="w-full pl-5 pr-2 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">₹</span>
-                  </div>
-                </div>
-              </>
-            )}
           </div>
 
           {/* Action Buttons */}
@@ -793,6 +851,41 @@ const SalesEntry: React.FC = () => {
         totalRecords={totalHistoryRecords}
         loadingInvoiceId={loadingInvoiceId}
       />
+
+      {/* Split Payment Drawer */}
+      <AnimatePresence>
+        {isPaymentModalOpen && (
+          <div className="fixed inset-0 z-[150] overflow-hidden text-slate-800 dark:text-slate-100">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsPaymentModalOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="absolute right-0 top-0 bottom-0 w-full max-w-md bg-white dark:bg-[#0f0f11] shadow-2xl flex flex-col border-l border-slate-200 dark:border-white/[0.08]"
+            >
+              <SettlePaymentPanel
+                formMode={formMode}
+                paymentTypes={paymentTypes}
+                paymentAmounts={paymentAmounts}
+                setPaymentAmounts={setPaymentAmounts}
+                netPayable={netPayable}
+                setIsPaymentModalOpen={setIsPaymentModalOpen}
+                saveToBackend={saveToBackend}
+                isSaving={isSaving}
+                isCredit={isCredit}
+                setIsCredit={setIsCredit}
+              />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

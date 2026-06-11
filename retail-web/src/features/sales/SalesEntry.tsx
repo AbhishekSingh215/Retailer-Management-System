@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useSalesLogic } from './useSalesLogic';
 import { LoadInvoiceModal } from './components/LoadInvoiceModal';
+import { SettlePaymentPanel } from './components/SettlePaymentPanel';
 
 const SalesEntry: React.FC = () => {
   const {
@@ -63,6 +64,7 @@ const SalesEntry: React.FC = () => {
     grossAmount,
     totalDiscount,
     netPayable,
+    roundOff,
     subtotalExclTax,
     cgstAmount,
     sgstAmount,
@@ -87,6 +89,7 @@ const SalesEntry: React.FC = () => {
     cancelNoStockItem,
     handleUpdateItemDiscount,
     handleUpdateItemDiscountPercent,
+    handleUpdateItemSelPrice,
     purSalesmanId,
     setPurSalesmanId,
     salesmenList,
@@ -103,7 +106,15 @@ const SalesEntry: React.FC = () => {
     globalDiscountAmount,
     handleApplyGlobalDiscountAmount,
     loadingInvoiceId,
-    isSaving
+    isSaving,
+    paymentAmounts,
+    setPaymentAmounts,
+    isPaymentModalOpen,
+    setIsPaymentModalOpen,
+    isCredit,
+    setIsCredit,
+    saveToBackend,
+    paymentTypes
   } = useSalesLogic();
 
   const totalTaxAmt = cgstAmount + sgstAmount + igstAmount;
@@ -263,18 +274,43 @@ const SalesEntry: React.FC = () => {
   // --- REUSABLE COMPONENTS ---
 
   const LayoutToggle = () => (
-    <div className="flex bg-slate-100/50 dark:bg-white/5 p-1 rounded-xl border border-slate-200 dark:border-white/[0.1] shadow-inner backdrop-blur-md">
+    <div className="flex bg-slate-100/60 dark:bg-slate-900/60 p-1 rounded-xl border border-slate-200/60 dark:border-white/[0.08] shadow-inner backdrop-blur-md relative gap-0.5">
+      {/* Modern POS Tab */}
       <button
         onClick={() => setViewMode('modern')}
-        className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${viewMode === 'modern' ? 'bg-white dark:bg-white/10 text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+        className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors duration-300 z-10 ${viewMode === 'modern'
+          ? 'text-white font-extrabold'
+          : 'text-slate-500 hover:text-slate-700 dark:text-slate-450 dark:hover:text-white'
+          }`}
       >
-        <LayoutDashboard className="w-3.5 h-3.5" /> Modern
+        {viewMode === 'modern' && (
+          <motion.div
+            layoutId="activeTabIndicator"
+            className="absolute inset-0 bg-indigo-600 rounded-lg shadow-md shadow-indigo-600/20 z-[-1]"
+            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+          />
+        )}
+        <LayoutDashboard className={`w-3.5 h-3.5 transition-transform duration-300 ${viewMode === 'modern' ? 'scale-110 text-white' : 'text-slate-400'}`} />
+        <span>Modern POS</span>
       </button>
+
+      {/* Classic View Tab */}
       <button
         onClick={() => setViewMode('classic')}
-        className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${viewMode === 'classic' ? 'bg-white dark:bg-white/10 text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+        className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors duration-300 z-10 ${viewMode === 'classic'
+          ? 'text-white font-extrabold'
+          : 'text-slate-500 hover:text-slate-700 dark:text-slate-450 dark:hover:text-white'
+          }`}
       >
-        <FileSpreadsheet className="w-3.5 h-3.5" /> Classic
+        {viewMode === 'classic' && (
+          <motion.div
+            layoutId="activeTabIndicator"
+            className="absolute inset-0 bg-indigo-600 rounded-lg shadow-md shadow-indigo-600/20 z-[-1]"
+            transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+          />
+        )}
+        <FileSpreadsheet className={`w-3.5 h-3.5 transition-transform duration-300 ${viewMode === 'classic' ? 'scale-110 text-white' : 'text-slate-400'}`} />
+        <span>Classic View</span>
       </button>
     </div>
   );
@@ -361,66 +397,71 @@ const SalesEntry: React.FC = () => {
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Gross Amt</span>
-          <span className="text-[18px] font-[1000] text-gray-900 dark:text-white leading-none">₹{grossAmount.toLocaleString()}</span>
+          <span className="text-[18px] font-[1000] text-gray-900 dark:text-white leading-none">₹{grossAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
         <div className="flex flex-col gap-0.5">
-          <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest">Disc.</span>
-          <span className="text-[18px] font-[1000] text-rose-500 leading-none">-₹{totalDiscount.toLocaleString()}</span>
+          <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest">Item Disc</span>
+          <span className="text-[18px] font-[1000] text-rose-500 leading-none">-₹{totalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+        <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
+        <div className="flex flex-col gap-0.5 w-[115px] -mt-1">
+          <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center whitespace-nowrap">
+            <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Disc %
+          </span>
+          <div className="relative mt-1">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              placeholder="0"
+              value={globalDiscountPercent ? Math.round(globalDiscountPercent * 100) / 100 : 0}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
+              }}
+              disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
+              className="w-full pl-2 pr-6 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70 disabled:cursor-not-allowed"
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">%</span>
+          </div>
+        </div>
+        <div className="flex flex-col gap-0.5 w-[115px] -mt-1">
+          <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center whitespace-nowrap">
+            <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Disc Amt
+          </span>
+          <div className="relative mt-1">
+            <input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={globalDiscountAmount ? Math.round(globalDiscountAmount * 100) / 100 : 0}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);
+              }}
+              disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
+              className="w-full pl-5 pr-2 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70 disabled:cursor-not-allowed"
+            />
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">₹</span>
+          </div>
         </div>
         <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
         <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Net Payable</span>
+          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Round Off</span>
+          <span className={`text-[18px] font-[1000] leading-none ${roundOff > 0 ? 'text-emerald-600 dark:text-emerald-400' : roundOff < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-white'}`}>
+            {roundOff > 0 ? '+' : roundOff < 0 ? '-' : ''}₹{Math.abs(roundOff).toFixed(2)}
+          </span>
+        </div>
+        <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Net Amount</span>
           <div className="flex items-baseline gap-1">
             <span className="text-[16px] font-black text-emerald-600 leading-none">₹</span>
             <span className="text-[36px] font-[1000] text-emerald-600 leading-none tracking-tighter">{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
         </div>
-        {(formMode === 'NEW' || formMode === 'EDIT') && (
-          <>
-            <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
-            <div className="flex flex-col gap-0.5 w-[85px] -mt-1">
-              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center">
-                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill %
-              </span>
-              <div className="relative mt-1">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  placeholder="0"
-                  value={globalDiscountPercent ? Math.round(globalDiscountPercent * 100) / 100 : ''}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
-                  }}
-                  disabled={false}
-                  className="w-full pl-2 pr-6 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">%</span>
-              </div>
-            </div>
-            <div className="flex flex-col gap-0.5 w-[90px] -mt-1">
-              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center">
-                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Amt
-              </span>
-              <div className="relative mt-1">
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={globalDiscountAmount ? Math.round(globalDiscountAmount * 100) / 100 : ''}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);
-                  }}
-                  disabled={false}
-                  className="w-full pl-5 pr-2 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">₹</span>
-              </div>
-            </div>
-          </>
-        )}
       </div>
       <div className="flex gap-3">
         <button onClick={handleNewSale} className="px-6 py-3 bg-slate-100 dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-black hover:bg-slate-200 transition-all flex items-center gap-2 text-slate-600 dark:text-white/60">
@@ -428,52 +469,22 @@ const SalesEntry: React.FC = () => {
         </button>
         <button
           onClick={handleCompleteSale}
-          disabled={formMode === 'VIEW' || formMode === 'LOCKED' || items.length === 0 || isSaving}
-          className={`px-10 py-3 bg-indigo-600 text-white rounded-xl text-[14px] font-[1000] shadow-xl shadow-indigo-600/30 hover:-translate-y-1 hover:bg-indigo-700 transition-all flex items-center gap-2.5 ${formMode === 'VIEW' || formMode === 'LOCKED' || items.length === 0 || isSaving ? 'opacity-50 cursor-not-allowed hover:translate-y-0' : ''}`}
+          disabled={items.length === 0 || isSaving}
+          className={`px-10 py-3 bg-indigo-600 text-white rounded-xl text-[14px] font-[1000] shadow-xl shadow-indigo-600/30 hover:-translate-y-1 hover:bg-indigo-700 transition-all flex items-center gap-2.5 ${items.length === 0 || isSaving ? 'opacity-50 cursor-not-allowed hover:translate-y-0' : ''}`}
         >
-          <CheckCircle2 className="w-5 h-5" /> {isSaving ? 'Completing...' : 'Complete Sale (F10)'}
+          <CheckCircle2 className="w-5 h-5" /> {isSaving ? 'Settling...' : (formMode === 'LOCKED' || formMode === 'VIEW') ? 'View Payment Split (F10)' : 'Settle Payment (F10)'}
         </button>
       </div>
     </div>
   );
 
   const renderClassicView = () => (
-    <div className="flex flex-col h-full gap-2 p-3 pt-0 overflow-hidden bg-transparent">
-      <div className="flex justify-end pt-1">
-        <LayoutToggle />
-      </div>
-
-      {/* Classic Header & Scanning Section - Compressed for Max Grid Space */}
+    <div className="flex flex-col h-full gap-2 p-3 pt-2 overflow-hidden bg-transparent">
+      {/* Classic Header & Scanning Section */}
       <div className="flex flex-col gap-2 shrink-0 relative z-[50]">
-        {/* Row 1: Invoice & Customer Info - SLIM VERSION */}
-        <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-3 flex flex-wrap items-center gap-4 shadow-sm shrink-0">
-          <div className="flex flex-col gap-1 min-w-[120px]">
-            <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Doc No.</span>
-            <div className="px-3 py-1.5 bg-slate-50 dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-slate-900 dark:text-white shadow-sm flex items-center gap-2 min-h-[38px]">
-              <span className="text-indigo-600 dark:text-indigo-400">#</span>
-              <span>{docNo}</span>
-            </div>
-          </div>
-          <div className="flex flex-col gap-1 min-w-[140px]">
-            <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2"><Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Date</span>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && setShowDatePicker(prev => !prev)}
-                disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
-                className={`w-full px-3 py-1.5 bg-white dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-slate-955 dark:text-white shadow-sm outline-none flex items-center justify-between gap-2 focus:border-indigo-500 min-h-[38px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-white/10'}`}
-              >
-                <span>{docDate ? new Date(docDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Select Date'}</span>
-                <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              </button>
-              <AnimatePresence>
-                {showDatePicker && viewMode === 'classic' && (
-                  <CustomDatePickerPopover onClose={() => setShowDatePicker(false)} alignClass="absolute top-full left-0 mt-2" />
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-          <div className="flex-1 flex flex-col gap-1 min-w-[200px]">
+        {/* Row 1: Metadata Fields Grid */}
+        <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-3 grid grid-cols-1 md:grid-cols-3 gap-3.5 shadow-sm shrink-0">
+          <div className="flex flex-col gap-1 min-w-0">
             <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2"><Search className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Customer Mobile</span>
             <div className="relative group">
               <input
@@ -503,7 +514,7 @@ const SalesEntry: React.FC = () => {
                         className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
                       >
                         <div className="flex flex-col">
-                          <span className="text-[13px] font-black text-gray-900 dark:text-white group-hover:text-indigo-500 transition-colors">{customer.name}</span>
+                          <span className="text-[13px] font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{customer.name}</span>
                           <span className="text-[10px] font-bold text-slate-400">{customer.mobile}</span>
                         </div>
                         <span className="text-[11px] font-black text-slate-700 dark:text-white/60">{customer.loyaltyPoints}</span>
@@ -514,7 +525,7 @@ const SalesEntry: React.FC = () => {
               </AnimatePresence>
             </div>
           </div>
-          <div className="flex-[0.8] flex flex-col gap-1 min-w-[180px]">
+          <div className="flex flex-col gap-1 min-w-0">
             <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2"><User className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Customer Name</span>
             <div className="px-4 py-1.5 bg-emerald-50/50 dark:bg-emerald-500/10 border-2 border-emerald-200 dark:border-emerald-500/30 rounded-xl flex items-center justify-between shadow-sm min-h-[38px]">
               <div className="flex items-center gap-2 min-w-0">
@@ -526,82 +537,73 @@ const SalesEntry: React.FC = () => {
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse flex-shrink-0"></div>
             </div>
           </div>
-
-          <div className="flex-[2.2] flex flex-col gap-1 min-w-[480px] relative">
+          <div className="flex flex-col gap-1 min-w-0 relative">
             <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
               <UserCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Salesman
             </span>
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1 group">
-                <input
-                  type="text"
-                  placeholder="Type name to search..."
-                  value={salesmanSearch}
-                  onChange={(e) => {
-                    setSalesmanSearch(e.target.value);
-                    if (purSalesmanId) {
-                      setPurSalesmanId(null);
-                    }
+            <div className="relative group">
+              <input
+                type="text"
+                placeholder="Type name to search..."
+                value={salesmanSearch}
+                onChange={(e) => {
+                  setSalesmanSearch(e.target.value);
+                  if (purSalesmanId) {
+                    setPurSalesmanId(null);
+                  }
+                  setIsSalesmanDropdownOpen(true);
+                }}
+                onFocus={() => {
+                  if (formMode !== 'VIEW' && formMode !== 'LOCKED') {
                     setIsSalesmanDropdownOpen(true);
-                  }}
-                  onFocus={() => {
-                    if (formMode !== 'VIEW' && formMode !== 'LOCKED') {
-                      setIsSalesmanDropdownOpen(true);
-                    }
-                  }}
-                  onBlur={() => {
-                    setTimeout(() => setIsSalesmanDropdownOpen(false), 200);
-                  }}
-                  readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
-                  className={`w-full px-4 py-1.5 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-300 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
-                />
-                <AnimatePresence>
-                  {isSalesmanDropdownOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -5 }}
-                      className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
-                    >
-                      {salesmenList
-                        .filter(s =>
-                          (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
-                          (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
-                        )
-                        .map((salesman) => (
-                          <button
-                            key={salesman.id}
-                            type="button"
-                            onClick={() => {
-                              setPurSalesmanId(salesman.id);
-                              setSalesmanSearch(salesman.name);
-                              setIsSalesmanDropdownOpen(false);
-                            }}
-                            className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
-                          >
-                            <div className="flex flex-col">
-                              <span className="text-[14px] font-black text-gray-900 dark:text-white group-hover:text-indigo-500 transition-colors">{salesman.name}</span>
-                              {salesman.code && <span className="text-[11px] font-bold text-slate-400">{salesman.code}</span>}
-                            </div>
-                          </button>
-                        ))
-                      }
-                      {salesmenList.filter(s =>
+                  }
+                }}
+                onBlur={() => {
+                  setTimeout(() => setIsSalesmanDropdownOpen(false), 200);
+                }}
+                readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
+                className={`w-full px-4 py-1.5 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-300 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
+              />
+              <AnimatePresence>
+                {isSalesmanDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
+                  >
+                    {salesmenList
+                      .filter(s =>
                         (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
                         (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
-                      ).length === 0 && (
-                          <div className="px-4 py-3 text-slate-400 text-[12px] font-bold">No salesmen found</div>
-                        )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Dynamic Status Badge */}
-              <StatusBadge />
-
-              {/* Action Buttons (New, Load, Save) */}
-              <HeaderActions />
+                      )
+                      .map((salesman) => (
+                        <button
+                          key={salesman.id}
+                          type="button"
+                          onClick={() => {
+                            setPurSalesmanId(salesman.id);
+                            setSalesmanSearch(salesman.name);
+                            setIsSalesmanDropdownOpen(false);
+                          }}
+                          className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-[14px] font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{salesman.name}</span>
+                            {salesman.code && <span className="text-[11px] font-bold text-slate-400">{salesman.code}</span>}
+                          </div>
+                        </button>
+                      ))
+                    }
+                    {salesmenList.filter(s =>
+                      (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
+                      (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
+                    ).length === 0 && (
+                        <div className="px-4 py-3 text-slate-400 text-[12px] font-bold">No salesmen found</div>
+                      )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </div>
@@ -628,7 +630,7 @@ const SalesEntry: React.FC = () => {
                     onKeyDown={handleNoStockPriceSubmit}
                     className="w-full pl-32 pr-10 py-2 bg-emerald-50/50 dark:bg-emerald-950/20 border-2 border-emerald-500 rounded-xl text-[14px] font-[1000] text-black dark:text-white focus:outline-none transition-all shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
-                  <button 
+                  <button
                     onClick={cancelNoStockItem}
                     className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-rose-500 hover:text-rose-700 transition-colors"
                     title="Cancel scan"
@@ -727,7 +729,7 @@ const SalesEntry: React.FC = () => {
                   <td className="px-6 py-5 text-[12px] font-[1000] text-slate-700">{item.size}</td>
                   <td className="px-6 py-5 text-center">
                     <div className="flex justify-center">
-                      <div 
+                      <div
                         className={`w-8 h-4 rounded-full p-0.5 transition-all duration-300 flex items-center ${item.isIndividual ? 'bg-indigo-600 dark:bg-indigo-500' : 'bg-slate-300 dark:bg-slate-700'} cursor-not-allowed`}
                         title={item.isIndividual ? 'Individual Item' : 'Standard Pack Item'}
                       >
@@ -740,7 +742,8 @@ const SalesEntry: React.FC = () => {
                       {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
                         <input
                           type="number"
-                          value={item.qty === 0 ? '' : item.qty}
+                          value={item.qty}
+                          onFocus={(e) => e.target.select()}
                           disabled={item.isIndividual}
                           onChange={(e) => handleUpdateQty(item.id, Number(e.target.value))}
                           onBlur={(e) => {
@@ -760,14 +763,36 @@ const SalesEntry: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-5 text-[14px] font-[900] text-slate-500 text-right whitespace-nowrap">₹{item.mrp.toLocaleString()}</td>
-                  <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{item.selPrice.toLocaleString()}</td>
+                  <td className="px-6 py-4 text-right whitespace-nowrap">
+                    {item.isNoStockChecking && formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                      <div className="flex items-center justify-end w-full">
+                        <div className="inline-flex items-center justify-between border border-amber-300 dark:border-amber-500/30 rounded-lg bg-amber-50 dark:bg-amber-500/10 px-2 py-1 w-[100px] focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-500 transition-all">
+                          <span className="text-[13px] font-bold text-amber-500 mr-1 select-none">₹</span>
+                          <input
+                            type="number"
+                            value={item.selPrice}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleUpdateItemSelPrice(item.id, Number(e.target.value))}
+                            className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-amber-700 dark:text-amber-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            min="0"
+                            step="0.01"
+                            placeholder="0"
+                            title="Editable — No Stock Check item"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400">₹{item.selPrice.toLocaleString()}</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-right whitespace-nowrap">
                     {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
                       <div className="flex items-center justify-end w-full">
                         <div className="inline-flex items-center justify-between border border-slate-200 dark:border-white/[0.1] rounded-lg bg-slate-50 dark:bg-white/[0.02] px-2 py-1 w-[80px] focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all">
                           <input
                             type="number"
-                            value={item.selPrice > 0 ? ((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) === 0 ? '' : (((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) / item.selPrice) * 100).toFixed(2).replace(/\.00$/, '')) : ''}
+                            value={item.selPrice > 0 ? (Math.round(((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) / item.selPrice) * 100 * 100) / 100) : 0}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) => handleUpdateItemDiscountPercent(item.id, Number(e.target.value))}
                             className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-slate-800 dark:text-slate-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
                             min="0"
@@ -784,7 +809,30 @@ const SalesEntry: React.FC = () => {
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-5 text-[14px] font-[1000] text-rose-700 text-right whitespace-nowrap">-₹{(item.rowDiscount !== undefined ? item.rowDiscount : item.discount).toLocaleString()}</td>
+                  <td className="px-6 py-4 text-right whitespace-nowrap">
+                    {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                      <div className="flex items-center justify-end w-full">
+                        <div className="inline-flex items-center justify-between border border-slate-200 dark:border-white/[0.1] rounded-lg bg-slate-50 dark:bg-white/[0.02] px-2 py-1 w-[95px] focus-within:ring-2 focus-within:ring-rose-500/20 focus-within:border-rose-500 transition-all">
+                          <input
+                            type="number"
+                            value={item.rowDiscount !== undefined ? item.rowDiscount : item.discount}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleUpdateItemDiscount(item.id, parseFloat(e.target.value) || 0)}
+                            className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-rose-600 dark:text-rose-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
+                            min="0"
+                            max={item.selPrice}
+                            step="0.01"
+                            placeholder="0"
+                          />
+                          <span className="text-[13px] font-bold text-rose-500 ml-1 select-none">₹</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="inline-block text-[14px] font-[1000] text-rose-700 pr-[9px]">
+                        -₹{(item.rowDiscount !== undefined ? item.rowDiscount : item.discount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{(item.selPrice - (item.rowDiscount !== undefined ? item.rowDiscount : item.discount)).toLocaleString()}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.hsn}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.taxDesc}</td>
@@ -802,6 +850,47 @@ const SalesEntry: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full w-full max-w-full mx-auto overflow-hidden bg-transparent">
+      {/* Shared Root Header Bar */}
+      <div className="bg-white dark:bg-[#0d0d0d] border-b border-slate-200 dark:border-white/[0.08] px-6 py-3 flex items-center justify-between shrink-0 z-20">
+        <div className="flex items-center gap-3 animate-fade-in">
+          <span className="text-[12.5px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest leading-none">
+            {viewMode === 'classic' ? 'Classic Register' : 'Modern POS'}
+          </span>
+          <StatusBadge />
+
+          <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
+
+          {/* Doc No */}
+          <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-50 dark:bg-white/[0.05] rounded-lg border border-slate-100 dark:border-white/[0.08]">
+            <FileText className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" />
+            <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 tracking-tight">#{docNo}</span>
+          </div>
+
+          {/* Date Picker Button */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && setShowDatePicker(prev => !prev)}
+              disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
+              className={`flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl border border-indigo-100 dark:border-indigo-500/20 text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 tracking-tight shadow-sm ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all'}`}
+            >
+              <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+              <span>{docDate ? new Date(docDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Select Date'}</span>
+            </button>
+            <AnimatePresence>
+              {showDatePicker && (
+                <CustomDatePickerPopover onClose={() => setShowDatePicker(false)} alignClass="absolute top-full left-0 mt-2" />
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <HeaderActions />
+          <div className="h-6 w-[1px] bg-slate-200 dark:bg-white/10 mx-1"></div>
+          <LayoutToggle />
+        </div>
+      </div>
+
       {/* Body Area: Expands to fill all space except footer */}
       <div className="flex-1 overflow-hidden">
         {viewMode === 'classic' ? renderClassicView() : (
@@ -811,49 +900,9 @@ const SalesEntry: React.FC = () => {
               {/* LEFT COLUMN: PRODUCT ENTRY */}
               <div className="w-full lg:flex-[2.5] flex flex-col gap-0 overflow-y-auto custom-scrollbar border-r border-slate-200 dark:border-white/[0.08] bg-slate-50/30 dark:bg-transparent">
 
-                <div className="p-4 pb-0 shrink-0 flex justify-end">
-                  <LayoutToggle />
-                </div>
-
                 {/* --- Header Section (Customer & Doc Info) --- */}
                 <div className="px-6 py-2 shrink-0 relative z-[50]">
                   <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-4 shadow-sm backdrop-blur-xl">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 pb-3 border-b border-slate-100 dark:border-white/[0.05]">
-                      <div className="flex items-center gap-3">
-                        <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30 flex-shrink-0">
-                          <User className="w-3.5 h-3.5" />
-                        </div>
-                        <div className="flex items-center gap-2.5">
-                          <h2 className="text-[12.5px] font-black text-gray-900 dark:text-white tracking-tight leading-none uppercase">Customer Details</h2>
-                          <StatusBadge />
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-                        <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-50 dark:bg-white/[0.05] rounded-lg border border-slate-100 dark:border-white/[0.08] flex-shrink-0">
-                          <FileText className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" />
-                          <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 tracking-tight">{docNo}</span>
-                        </div>
-                        <div className="relative flex-shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && setShowDatePicker(prev => !prev)}
-                            disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
-                            className={`flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl border border-indigo-100 dark:border-indigo-500/20 text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 tracking-tight shadow-sm ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all'}`}
-                          >
-                            <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                            <span>{docDate ? new Date(docDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Select Date'}</span>
-                          </button>
-                          <AnimatePresence>
-                            {showDatePicker && viewMode === 'modern' && (
-                              <CustomDatePickerPopover onClose={() => setShowDatePicker(false)} alignClass="absolute top-full right-0 mt-2" />
-                            )}
-                          </AnimatePresence>
-                        </div>
-                        <div className="hidden md:block h-6 w-[1px] bg-slate-200 dark:bg-white/10 mx-1"></div>
-                        <HeaderActions />
-                      </div>
-                    </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5">
                       <div className="space-y-1 relative group col-span-1 md:col-span-3">
                         <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
@@ -1017,7 +1066,7 @@ const SalesEntry: React.FC = () => {
                               onKeyDown={handleNoStockPriceSubmit}
                               className="w-full bg-emerald-50/50 dark:bg-emerald-950/20 border-2 border-emerald-500 text-gray-900 dark:text-white text-[14px] font-extrabold rounded-2xl pl-36 pr-12 py-3 outline-none transition-all shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
-                            <button 
+                            <button
                               onClick={cancelNoStockItem}
                               className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-rose-500 hover:text-rose-700 transition-colors"
                               title="Cancel scan"
@@ -1096,7 +1145,8 @@ const SalesEntry: React.FC = () => {
                                   type="number"
                                   min="1"
                                   disabled={lastScannedItem.isIndividual}
-                                  value={lastScannedItem.qty === 0 ? '' : lastScannedItem.qty}
+                                  value={lastScannedItem.qty}
+                                  onFocus={(e) => e.target.select()}
                                   onChange={(e) => {
                                     const val = parseInt(e.target.value);
                                     handleUpdateQty(lastScannedItem.id, isNaN(val) ? 0 : val);
@@ -1122,7 +1172,8 @@ const SalesEntry: React.FC = () => {
                                       max="100"
                                       step="0.1"
                                       placeholder="0"
-                                      value={lastScannedItem.selPrice > 0 ? ((lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount) === 0 ? '' : Number((((lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount) / lastScannedItem.selPrice) * 100).toFixed(2))) : ''}
+                                      value={lastScannedItem.selPrice > 0 ? (Math.round(((lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount) / lastScannedItem.selPrice) * 100 * 100) / 100) : 0}
+                                      onFocus={(e) => e.target.select()}
                                       onChange={(e) => handleUpdateItemDiscountPercent(lastScannedItem.id, parseFloat(e.target.value) || 0)}
                                       className="w-full h-full bg-transparent border-0 text-right pr-8 pl-3 p-0 font-bold text-[15px] text-slate-800 dark:text-slate-100 focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
                                     />
@@ -1137,7 +1188,8 @@ const SalesEntry: React.FC = () => {
                                       min="0"
                                       max={lastScannedItem.selPrice}
                                       placeholder="0.00"
-                                      value={(lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount) || ''}
+                                      value={lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount}
+                                      onFocus={(e) => e.target.select()}
                                       onChange={(e) => handleUpdateItemDiscount(lastScannedItem.id, parseFloat(e.target.value) || 0)}
                                       className="w-full h-full bg-transparent border-0 text-right pr-3 pl-8 p-0 font-bold text-[15px] text-rose-600 dark:text-rose-400 focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
                                     />
@@ -1170,231 +1222,267 @@ const SalesEntry: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-
               {/* RIGHT COLUMN: RECEIPT (MODERN) */}
-              <div className="w-full lg:flex-[1.2] bg-white dark:bg-[#0d0d0d] flex flex-col overflow-hidden relative z-10">
+              <div className="w-full lg:flex-[1.2] bg-white dark:bg-[#0d0d0d] flex flex-col overflow-hidden relative z-10 border-l border-slate-200 dark:border-white/[0.08]">
+                <AnimatePresence mode="wait">
+                  {!isPaymentModalOpen ? (
+                    <motion.div
+                      key="cart-view"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex-1 flex flex-col min-h-0 overflow-hidden"
+                    >
+                      {/* Pro-Header */}
+                      <div className="px-6 py-5 border-b border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] shrink-0">
+                        <div className="flex justify-between items-center mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+                              <ShoppingCart className="w-3.5 h-3.5" />
+                            </div>
+                            <h3 className="text-[12px] font-extrabold text-gray-900 dark:text-white uppercase tracking-wider">Current Sale</h3>
+                          </div>
+                          <div className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1 rounded-full text-[10px] font-extrabold border border-indigo-100 dark:border-indigo-500/20 uppercase tracking-widest">
+                            {items.length} Items
+                          </div>
+                        </div>
 
-                {/* Pro-Header */}
-                <div className="px-6 py-5 border-b border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] shrink-0">
-                  <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
-                        <ShoppingCart className="w-3.5 h-3.5" />
+                        <div className="relative group">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Search in cart..."
+                            value={cartSearch}
+                            onChange={(e) => setCartSearch(e.target.value)}
+                            className="w-full bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.1] rounded-xl pl-9 pr-4 py-2 text-[11px] font-semibold outline-none focus:bg-white dark:focus:bg-white/[0.05] focus:border-indigo-400 transition-all shadow-inner"
+                          />
+                        </div>
                       </div>
-                      <h3 className="text-[12px] font-extrabold text-gray-900 dark:text-white uppercase tracking-wider">Current Sale</h3>
-                    </div>
-                    <div className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1 rounded-full text-[10px] font-extrabold border border-indigo-100 dark:border-indigo-500/20 uppercase tracking-widest">
-                      {items.length} Items
-                    </div>
-                  </div>
 
-                  <div className="relative group">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search in cart..."
-                      value={cartSearch}
-                      onChange={(e) => setCartSearch(e.target.value)}
-                      className="w-full bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.1] rounded-xl pl-9 pr-4 py-2 text-[11px] font-semibold outline-none focus:bg-white dark:focus:bg-white/[0.05] focus:border-indigo-400 transition-all shadow-inner"
-                    />
-                  </div>
-                </div>
+                      <div className="pl-6 pr-16 py-2 bg-slate-50/50 dark:bg-white/[0.02] border-b border-slate-200 dark:border-white/[0.05] flex text-[9px] font-extrabold text-gray-400 dark:text-white/20 uppercase tracking-[0.25em] shrink-0">
+                        <div className="w-8">#</div>
+                        <div className="flex-1">Item Description</div>
+                        <div className="w-16 text-center">Qty</div>
+                        <div className="w-24 text-right">Amount</div>
+                      </div>
 
-                <div className="pl-6 pr-16 py-2 bg-slate-50/50 dark:bg-white/[0.02] border-b border-slate-200 dark:border-white/[0.05] flex text-[9px] font-extrabold text-gray-400 dark:text-white/20 uppercase tracking-[0.25em] shrink-0">
-                  <div className="w-8">#</div>
-                  <div className="flex-1">Item Description</div>
-                  <div className="w-16 text-center">Qty</div>
-                  <div className="w-24 text-right">Amount</div>
-                </div>
+                      <div className="flex-1 overflow-y-auto custom-scrollbar">
+                        {filteredItems.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center h-full opacity-30 p-10 text-center">
+                            <ShoppingCart className="w-12 h-12 mb-4" />
+                            <p className="text-[12px] font-black uppercase tracking-widest leading-relaxed">No matching items found</p>
+                          </div>
+                        ) : (
+                          filteredItems.map((item, index) => (
+                            <div key={item.id} className="pl-6 pr-16 py-4 border-b border-slate-100 dark:border-white/[0.03] hover:bg-slate-50/50 dark:hover:bg-white/[0.01] transition-colors group relative flex items-center gap-3">
+                              <div className="w-8 text-[11px] font-bold text-slate-300 dark:text-white/10">{index + 1}</div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="text-[13px] font-extrabold text-gray-900 dark:text-white leading-tight truncate">{item.productCode}</h4>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-[9px] font-bold text-indigo-500/70 uppercase tracking-wider">{item.barcode}</span>
+                                  <span className="text-[9px] font-semibold text-slate-400 uppercase">{item.size}/{item.color}</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-[9px] font-bold text-slate-300 dark:text-white/20 line-through">₹{item.mrp.toLocaleString()}</span>
+                                  <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">₹{item.selPrice.toLocaleString()} / unit</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-550/10 px-1.5 py-0.5 rounded-md">{item.taxDesc}</span>
+                                </div>
+                              </div>
+                              <div className="w-16 text-center">
+                                <div className="inline-block px-2 py-0.5 bg-slate-100 dark:bg-white/[0.05] rounded-lg text-[12px] font-black text-slate-700 dark:text-white/70 border border-slate-200 dark:border-white/[0.05]">
+                                  {item.qty}
+                                </div>
+                              </div>
+                              <div className="w-24 text-right flex flex-col items-end">
+                                <p className="text-[13px] font-extrabold text-gray-900 dark:text-white leading-none">₹{(item.amount + (item.taxAmt || 0)).toLocaleString()}</p>
+                              </div>
+                              {formMode !== 'VIEW' && formMode !== 'LOCKED' && (
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1">
+                                  <button onClick={() => handleRemoveItem(item.id)} className="p-2 bg-rose-50 dark:bg-rose-550/10 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-100 transition-all">
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                  {filteredItems.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full opacity-30 p-10 text-center">
-                      <ShoppingCart className="w-12 h-12 mb-4" />
-                      <p className="text-[12px] font-black uppercase tracking-widest leading-relaxed">No matching items found</p>
-                    </div>
-                  ) : (
-                    filteredItems.map((item, index) => (
-                      <div key={item.id} className="pl-6 pr-16 py-4 border-b border-slate-100 dark:border-white/[0.03] hover:bg-slate-50/50 dark:hover:bg-white/[0.01] transition-colors group relative flex items-center gap-3">
-                        <div className="w-8 text-[11px] font-bold text-slate-300 dark:text-white/10">{index + 1}</div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-[13px] font-extrabold text-gray-900 dark:text-white leading-tight truncate">{item.productCode}</h4>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[9px] font-bold text-indigo-500/70 uppercase tracking-wider">{item.barcode}</span>
-                            <span className="text-[9px] font-semibold text-slate-400 uppercase">{item.size}/{item.color}</span>
+                      <div className="bg-slate-50 dark:bg-[#080808] border-t border-slate-200 dark:border-white/[0.1] shrink-0">
+                        <AnimatePresence>
+                          {isDetailsOpen && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-4 space-y-3 border-b border-slate-150 dark:border-white/5">
+                                <div className="flex justify-between items-center text-[12px] font-bold text-gray-550 dark:text-white/40">
+                                  <span>Subtotal (Excl. Tax)</span>
+                                  <span className="text-gray-900 dark:text-white font-black">₹{subtotalExclTax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+                                <div className="bg-slate-100/50 dark:bg-white/[0.02] p-3 rounded-xl space-y-2">
+                                  {cgstAmount > 0 && (
+                                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                      <span>CGST</span>
+                                      <span>₹{cgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                  )}
+                                  {sgstAmount > 0 && (
+                                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                      <span>SGST</span>
+                                      <span>₹{sgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                  )}
+                                  {igstAmount > 0 && (
+                                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                      <span>IGST</span>
+                                      <span>₹{igstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                    </div>
+                                  )}
+                                  {cgstAmount === 0 && sgstAmount === 0 && igstAmount === 0 && (
+                                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                      <span>GST 0%</span>
+                                      <span>₹0.00</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        <div className="p-4 pt-0">
+                          {/* Compact Summary Row */}
+                          <div className="flex justify-between items-center py-3 border-b border-slate-150 dark:border-white/5 mb-3">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Qty</span>
+                              <span className="text-[14px] font-black text-slate-700 dark:text-white/80">{totalQty.toFixed(2)}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Gross Amt</span>
+                              <span className="text-[14px] font-black text-slate-700 dark:text-white/80">₹{grossAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-right">Item Disc</span>
+                              <span className="text-[14px] font-black text-rose-600 dark:text-rose-400 text-right">-₹{totalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Round Off</span>
+                              <span className={`text-[14px] font-black text-right ${roundOff > 0 ? 'text-emerald-600 dark:text-emerald-400' : roundOff < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-white'}`}>
+                                {roundOff > 0 ? '+' : roundOff < 0 ? '-' : ''}₹{Math.abs(roundOff).toFixed(2)}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest text-right">Tax</span>
+                              <span className="text-[14px] font-black text-indigo-600 dark:text-indigo-400 text-right">₹{totalTaxAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[9px] font-bold text-slate-300 dark:text-white/20 line-through">₹{item.mrp.toLocaleString()}</span>
-                            <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400">₹{item.selPrice.toLocaleString()} / unit</span>
+
+                          <div className="flex justify-between items-end mb-3">
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-[0.3em]">Net Amount</span>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-[16px] font-black text-emerald-600 dark:text-emerald-400">₹</span>
+                                <span className="text-[36px] font-[1000] text-emerald-600 dark:text-emerald-400 leading-none tracking-tighter">{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="flex flex-col w-[115px] -mt-1">
+                                <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-center flex items-center gap-1 justify-center whitespace-nowrap">
+                                  <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Disc %
+                                </span>
+                                <div className="relative mt-1">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    placeholder="0"
+                                    value={globalDiscountPercent ? Math.round(globalDiscountPercent * 100) / 100 : 0}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value);
+                                      handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
+                                    }}
+                                    disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
+                                    className="w-full pl-2 pr-6 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70 disabled:cursor-not-allowed"
+                                  />
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">%</span>
+                                </div>
+                              </div>
+                              <div className="flex flex-col w-[115px] -mt-1">
+                                <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-center flex items-center gap-1 justify-center whitespace-nowrap">
+                                  <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Disc Amt
+                                </span>
+                                <div className="relative mt-1">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0"
+                                    value={globalDiscountAmount ? Math.round(globalDiscountAmount * 100) / 100 : 0}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value);
+                                      handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);
+                                    }}
+                                    disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
+                                    className="w-full pl-5 pr-2 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70 disabled:cursor-not-allowed"
+                                  />
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">₹</span>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => setIsDetailsOpen(!isDetailsOpen)}
+                                className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-550/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all h-8 flex items-center justify-center"
+                              >
+                                {isDetailsOpen ? 'Hide' : 'Details'}
+                              </button>
+                            </div>
                           </div>
-                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[9px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded-md">{item.taxDesc}</span>
-                          </div>
-                        </div>
-                        <div className="w-16 text-center">
-                          <div className="inline-block px-2 py-0.5 bg-slate-100 dark:bg-white/[0.05] rounded-lg text-[12px] font-black text-slate-700 dark:text-white/70 border border-slate-200 dark:border-white/[0.05]">
-                            {item.qty}
-                          </div>
-                        </div>
-                         <div className="w-24 text-right flex flex-col items-end">
-                          <p className="text-[13px] font-extrabold text-gray-900 dark:text-white leading-none">₹{(item.amount + (item.taxAmt || 0)).toLocaleString()}</p>
-                        </div>
-                        {formMode !== 'VIEW' && formMode !== 'LOCKED' && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all flex items-center gap-1">
-                            <button onClick={() => handleRemoveItem(item.id)} className="p-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-lg hover:bg-rose-100 transition-all">
-                              <Trash2 className="w-3.5 h-3.5" />
+
+                          <div className="flex gap-2">
+                            <button onClick={handleNewSale} className="flex-1 py-3 bg-white dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-white/60 border border-slate-200 dark:border-white/10 rounded-xl font-black text-[12px] flex items-center justify-center gap-2 transition-all">
+                              <X className="w-4 h-4" /> Cancel
+                            </button>
+                            <button
+                              onClick={handleCompleteSale}
+                              disabled={items.length === 0 || isSaving}
+                              className={`flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-[1000] text-[14px] flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 ${items.length === 0 || isSaving ? 'opacity-50 cursor-not-allowed active:scale-100' : ''}`}
+                            >
+                              <CheckCircle2 className="w-4 h-4" /> {isSaving ? 'Settling...' : (formMode === 'LOCKED' || formMode === 'VIEW') ? 'View Payment Split' : 'Settle Payment'}
                             </button>
                           </div>
-                        )}
+                        </div>
                       </div>
-                    ))
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="payment-view"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex-1 flex flex-col min-h-0 overflow-hidden"
+                    >
+                      <SettlePaymentPanel
+                        formMode={formMode}
+                        paymentTypes={paymentTypes}
+                        paymentAmounts={paymentAmounts}
+                        setPaymentAmounts={setPaymentAmounts}
+                        netPayable={netPayable}
+                        setIsPaymentModalOpen={setIsPaymentModalOpen}
+                        saveToBackend={saveToBackend}
+                        isSaving={isSaving}
+                        isCredit={isCredit}
+                        setIsCredit={setIsCredit}
+                      />
+                    </motion.div>
                   )}
-                </div>
-
-                <div className="bg-slate-50 dark:bg-[#080808] border-t border-slate-200 dark:border-white/[0.1] shrink-0">
-                  <AnimatePresence>
-                    {isDetailsOpen && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="p-4 space-y-3 border-b border-slate-100 dark:border-white/5">
-                          <div className="flex justify-between items-center text-[12px] font-bold text-gray-500 dark:text-white/40">
-                            <span>Subtotal (Excl. Tax)</span>
-                            <span className="text-gray-900 dark:text-white font-black">₹{subtotalExclTax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                          </div>
-                          <div className="bg-slate-100/50 dark:bg-white/[0.02] p-3 rounded-xl space-y-2">
-                            {cgstAmount > 0 && (
-                              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                <span>CGST</span>
-                                <span>₹{cgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              </div>
-                            )}
-                            {sgstAmount > 0 && (
-                              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                <span>SGST</span>
-                                <span>₹{sgstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              </div>
-                            )}
-                            {igstAmount > 0 && (
-                              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                <span>IGST</span>
-                                <span>₹{igstAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              </div>
-                            )}
-                            {cgstAmount === 0 && sgstAmount === 0 && igstAmount === 0 && (
-                              <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                <span>GST 0%</span>
-                                <span>₹0.00</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="p-4 pt-0">
-                    {/* Compact Summary Row */}
-                    <div className="flex justify-between items-center py-3 border-b border-slate-100 dark:border-white/5 mb-3">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Qty</span>
-                        <span className="text-[14px] font-black text-slate-700 dark:text-white/80">{totalQty.toFixed(2)}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Gross</span>
-                        <span className="text-[14px] font-black text-slate-700 dark:text-white/80">₹{grossAmount.toLocaleString()}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-right">Savings</span>
-                        <span className="text-[14px] font-black text-rose-600 dark:text-rose-400 text-right">-₹{totalDiscount.toLocaleString()}</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest text-right">Tax</span>
-                        <span className="text-[14px] font-black text-indigo-650 dark:text-indigo-400 text-right">₹{totalTaxAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between items-end mb-3">
-                      <div className="space-y-0.5">
-                        <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-[0.3em]">Net Payable</span>
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-[16px] font-black text-emerald-600 dark:text-emerald-400">₹</span>
-                          <span className="text-[36px] font-[1000] text-emerald-600 dark:text-emerald-400 leading-none tracking-tighter">{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {(formMode === 'NEW' || formMode === 'EDIT') && (
-                          <>
-                            <div className="flex flex-col w-[85px] -mt-1">
-                              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-center flex items-center gap-1 justify-center">
-                                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill %
-                              </span>
-                              <div className="relative mt-1">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="100"
-                                  placeholder="0"
-                                  value={globalDiscountPercent ? Math.round(globalDiscountPercent * 100) / 100 : ''}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value);
-                                    handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
-                                  }}
-                                  disabled={false}
-                                  className="w-full pl-2 pr-6 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                />
-                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">%</span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col w-[90px] -mt-1">
-                              <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest text-center flex items-center gap-1 justify-center">
-                                <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Amt
-                              </span>
-                              <div className="relative mt-1">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  placeholder="0"
-                                  value={globalDiscountAmount ? Math.round(globalDiscountAmount * 100) / 100 : ''}
-                                  onChange={(e) => {
-                                    const val = parseFloat(e.target.value);
-                                    handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);
-                                  }}
-                                  disabled={false}
-                                  className="w-full pl-5 pr-2 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                />
-                                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">₹</span>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                        <button
-                          onClick={() => setIsDetailsOpen(!isDetailsOpen)}
-                          className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all h-8 flex items-center justify-center"
-                        >
-                          {isDetailsOpen ? 'Hide' : 'Details'}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button onClick={handleNewSale} className="flex-1 py-3 bg-white dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-600 dark:text-white/60 border border-slate-200 dark:border-white/10 rounded-xl font-black text-[12px] flex items-center justify-center gap-2 transition-all">
-                        <X className="w-4 h-4" /> Cancel
-                      </button>
-                      <button
-                        onClick={handleCompleteSale}
-                        disabled={formMode === 'VIEW' || formMode === 'LOCKED' || items.length === 0 || isSaving}
-                        className={`flex-[2] py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-[1000] text-[14px] flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20 transition-all active:scale-95 ${formMode === 'VIEW' || formMode === 'LOCKED' || items.length === 0 || isSaving ? 'opacity-50 cursor-not-allowed active:scale-100' : ''}`}
-                      >
-                        <CheckCircle2 className="w-4 h-4" /> {isSaving ? 'Completing...' : 'Complete Sale'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                </AnimatePresence>
               </div>
             </div>
           </div>
@@ -1530,6 +1618,41 @@ const SalesEntry: React.FC = () => {
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Split Payment Drawer for Classic View */}
+      <AnimatePresence>
+        {isPaymentModalOpen && viewMode === 'classic' && (
+          <div className="fixed inset-0 z-[150] overflow-hidden text-slate-800 dark:text-slate-100">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsPaymentModalOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="absolute right-0 top-0 bottom-0 w-full max-w-md bg-white dark:bg-[#0f0f11] shadow-2xl flex flex-col border-l border-slate-200 dark:border-white/[0.08]"
+            >
+              <SettlePaymentPanel
+                formMode={formMode}
+                paymentTypes={paymentTypes}
+                paymentAmounts={paymentAmounts}
+                setPaymentAmounts={setPaymentAmounts}
+                netPayable={netPayable}
+                setIsPaymentModalOpen={setIsPaymentModalOpen}
+                saveToBackend={saveToBackend}
+                isSaving={isSaving}
+                isCredit={isCredit}
+                setIsCredit={setIsCredit}
+              />
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

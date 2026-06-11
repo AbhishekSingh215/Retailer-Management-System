@@ -7,8 +7,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Clock,
-  User,
-  ExternalLink,
   ChevronRight,
   Sunrise,
   Sun,

@@ -20,5 +20,6 @@ public interface IApplicationDbContext
     DbSet<HsnDetail> HsnDetails { get; set; }
     DbSet<TaxMaster> TaxMasters { get; set; }
     DbSet<Salesman> Salesmen { get; set; }
+    DbSet<PaymentType> PaymentTypes { get; set; }
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

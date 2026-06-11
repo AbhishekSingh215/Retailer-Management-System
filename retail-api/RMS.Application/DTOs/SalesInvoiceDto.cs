@@ -20,7 +20,14 @@ public class SalesInvoiceDto
     public string SalesmanName { get; set; } = string.Empty;
     public string Status { get; set; } = "EDIT";
     public bool? PurExclusiveBill { get; set; }
+    public bool? PurCreditBill { get; set; }
+    public decimal? PurCashAmount { get; set; }
+    public decimal? PurCardAmount { get; set; }
+    public decimal? PurUpiAmount { get; set; }
+    public decimal? PurAdvanceAmount { get; set; }
+    public decimal? PurReceiptAmount { get; set; }
     public List<SalesLineItemDto> Items { get; set; } = new List<SalesLineItemDto>();
+    public List<PaymentAmountDto> Payments { get; set; } = new List<PaymentAmountDto>();
 }
 
 public class SalesLineItemDto

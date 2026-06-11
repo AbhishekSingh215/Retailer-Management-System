@@ -9,7 +9,9 @@ import {
   ChevronDown,
   CircleDot,
   Star,
-  Compass
+  Compass,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ThemeToggle from '../ThemeToggle';
@@ -31,22 +33,30 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ childr
 const SidebarItem = ({ icon, label, isActive, isExpanded, onClick }: { icon: React.ReactNode, label: string, isActive?: boolean, isExpanded: boolean, onClick?: () => void }) => (
   <button
     onClick={onClick}
-    title={!isExpanded ? label : undefined}
-    className={`w-full flex items-center ${isExpanded ? 'px-4' : 'justify-center px-0'} py-3.5 rounded-2xl transition-all duration-300 relative group ${isActive
+    className={`w-full flex items-center ${isExpanded ? 'px-4 gap-3' : 'justify-center px-0'} py-3 rounded-2xl transition-all duration-300 relative group ${isActive
         ? 'bg-indigo-600 dark:bg-white/[0.08] text-white dark:text-white shadow-lg shadow-indigo-600/20 dark:shadow-none'
         : 'text-gray-500 dark:text-white/40 hover:text-indigo-600 dark:hover:text-white hover:bg-indigo-50 dark:hover:bg-white/[0.04]'
       }`}
   >
-    <div className={`${isActive ? 'scale-110' : 'group-hover:scale-110'} transition-transform duration-300`}>
+    <div className={`${isActive ? 'scale-110' : 'group-hover:scale-110'} transition-transform duration-300 flex items-center justify-center`}>
       {icon}
     </div>
     {isExpanded && (
-      <span className="ml-3 text-[14px] font-bold tracking-wide whitespace-nowrap overflow-hidden transition-all duration-300 opacity-100 w-auto">
+      <span className="text-[14px] font-bold tracking-wide whitespace-nowrap overflow-hidden transition-all duration-300 opacity-100 w-auto">
         {label}
       </span>
     )}
     {isActive && !isExpanded && (
-      <div className="absolute right-0 w-1 h-6 bg-white dark:bg-indigo-500 rounded-l-full"></div>
+      <div className="absolute right-0 w-1.5 h-6 bg-indigo-600 dark:bg-indigo-400 rounded-l-full"></div>
+    )}
+
+    {/* Premium Floating Tooltip */}
+    {!isExpanded && (
+      <div className="absolute left-[78px] top-1/2 -translate-y-1/2 bg-slate-900 dark:bg-slate-800 text-white text-[12px] font-bold px-3 py-1.5 rounded-xl opacity-0 pointer-events-none translate-x-[-8px] group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 whitespace-nowrap shadow-xl z-50 border border-white/[0.08]">
+        {label}
+        {/* Tooltip Arrow */}
+        <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-900 dark:bg-slate-800 rotate-45 border-l border-b border-white/[0.08]"></div>
+      </div>
     )}
   </button>
 );
@@ -74,7 +84,7 @@ const SidebarSubItem = ({ icon, label, isActive, isExpanded, onClick }: { icon?:
 };
 
 // Collapsible Group
-const SidebarGroup = ({ icon, label, isActive, isOpenInitially, isExpanded, forceOpen, children }: { icon: React.ReactNode, label: string, isActive?: boolean, isOpenInitially?: boolean, isExpanded: boolean, forceOpen?: boolean, children: React.ReactNode }) => {
+const SidebarGroup = ({ icon, label, isActive, isOpenInitially, isExpanded, forceOpen, onExpand, children }: { icon: React.ReactNode, label: string, isActive?: boolean, isOpenInitially?: boolean, isExpanded: boolean, forceOpen?: boolean, onExpand?: () => void, children: React.ReactNode }) => {
   const [isOpen, setIsOpen] = useState(isOpenInitially || false);
 
   useEffect(() => {
@@ -83,18 +93,26 @@ const SidebarGroup = ({ icon, label, isActive, isOpenInitially, isExpanded, forc
     }
   }, [forceOpen]);
 
+  const handleToggle = () => {
+    if (!isExpanded) {
+      if (onExpand) onExpand();
+      setIsOpen(true);
+    } else {
+      setIsOpen(!isOpen);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-1">
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        title={!isExpanded ? label : undefined}
-        className={`w-full flex items-center ${isExpanded ? 'px-4 justify-between' : 'px-0 justify-center'} py-3.5 rounded-2xl transition-all duration-300 group ${(isActive || (isOpen && isExpanded))
-            ? 'bg-slate-50 dark:bg-white/[0.04] text-gray-900 dark:text-white'
+        onClick={handleToggle}
+        className={`w-full flex items-center ${isExpanded ? 'px-4 justify-between' : 'justify-center px-0'} py-3 rounded-2xl transition-all duration-300 relative group ${(isActive || (isOpen && isExpanded))
+            ? 'bg-slate-50 dark:bg-white/[0.04] text-gray-900 dark:text-white font-bold'
             : 'text-gray-500 dark:text-white/40 hover:text-indigo-600 dark:hover:text-white hover:bg-indigo-50/50 dark:hover:bg-white/[0.02]'
           }`}
       >
         <div className="flex items-center">
-          <div className={`${(isActive || (isOpen && isExpanded)) ? 'text-indigo-600 dark:text-white scale-110' : 'group-hover:scale-110'} transition-transform duration-300`}>
+          <div className={`${(isActive || (isOpen && isExpanded)) ? 'text-indigo-600 dark:text-white scale-110' : 'group-hover:scale-110'} transition-transform duration-300 flex items-center justify-center`}>
             {icon}
           </div>
           {isExpanded && (
@@ -105,6 +123,15 @@ const SidebarGroup = ({ icon, label, isActive, isOpenInitially, isExpanded, forc
           <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
             <ChevronDown className="w-4 h-4 opacity-30" />
           </motion.div>
+        )}
+
+        {/* Premium Floating Tooltip for Groups */}
+        {!isExpanded && (
+          <div className="absolute left-[78px] top-1/2 -translate-y-1/2 bg-slate-900 dark:bg-slate-800 text-white text-[12px] font-bold px-3 py-1.5 rounded-xl opacity-0 pointer-events-none translate-x-[-8px] group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 whitespace-nowrap shadow-xl z-50 border border-white/[0.08]">
+            {label}
+            {/* Tooltip Arrow */}
+            <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-900 dark:bg-slate-800 rotate-45 border-l border-b border-white/[0.08]"></div>
+          </div>
         )}
       </button>
 
@@ -128,9 +155,20 @@ const SidebarGroup = ({ icon, label, isActive, isOpenInitially, isExpanded, forc
 const AppLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(() => {
+    const saved = localStorage.getItem('rsoft_sidebar_expanded');
+    return saved === 'true';
+  });
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [companyName, setCompanyName] = useState('RSOFT Enterprise');
+
+  const toggleSidebar = () => {
+    setIsSidebarExpanded(prev => {
+      const next = !prev;
+      localStorage.setItem('rsoft_sidebar_expanded', String(next));
+      return next;
+    });
+  };
 
   // Sidebar Pin states
   const [pinnedRoutes, setPinnedRoutes] = useState<string[]>([]);
@@ -223,34 +261,34 @@ const AppLayout: React.FC = () => {
         style={{ background: 'radial-gradient(circle at 15% 0%, rgba(59, 130, 246, 0.12) 0%, transparent 50%), radial-gradient(circle at 85% 100%, rgba(99, 102, 241, 0.08) 0%, transparent 50%)' }}
       ></div>
 
-      {/* Auto-Collapsing Sidebar */}
+      {/* Interactive Toggle Sidebar */}
       <motion.aside
         initial={false}
-        animate={{ width: isSidebarExpanded ? 240 : 80 }}
+        animate={{ width: isSidebarExpanded ? 240 : 72 }}
         transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-        onMouseEnter={() => setIsSidebarExpanded(true)}
-        onMouseLeave={() => setIsSidebarExpanded(false)}
         className="h-screen bg-slate-50/95 dark:bg-[#0d0d0d]/95 backdrop-blur-2xl border-r border-slate-200 dark:border-white/[0.08] flex flex-col relative z-20 shadow-2xl transition-colors duration-300"
       >
-        {/* Brand Area */}
-        <div className={`p-8 pb-10 flex items-center ${isSidebarExpanded ? 'gap-4' : 'justify-center'} transition-all`}>
-          <div className="flex-shrink-0 flex items-center justify-center w-12 h-12 bg-indigo-600 rounded-[18px] shadow-xl shadow-indigo-500/30">
-            <Store className="w-6 h-6 text-white" />
-          </div>
-          {isSidebarExpanded && (
-            <div className="flex flex-col min-w-0">
-              <span className="text-[22px] font-[1000] tracking-tighter text-gray-900 dark:text-white leading-none truncate" title={formattedCompany.main}>
-                {formattedCompany.main}
-              </span>
-              <span className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em] mt-1 truncate" title={formattedCompany.sub}>
-                {formattedCompany.sub}
-              </span>
+        {/* Brand Area - Vertically Aligned to Header (h-[76px]) */}
+        <div className={`h-[76px] flex items-center border-b border-slate-200 dark:border-white/[0.08] ${isSidebarExpanded ? 'px-6 justify-between' : 'justify-center px-0'} transition-all w-full`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-500/20">
+              <Store className="w-5 h-5 text-white" />
             </div>
-          )}
+            {isSidebarExpanded && (
+              <div className="flex flex-col min-w-0">
+                <span className="text-[18px] font-[1000] tracking-tighter text-gray-900 dark:text-white leading-none truncate" title={formattedCompany.main}>
+                  {formattedCompany.main}
+                </span>
+                <span className="text-[9px] font-black text-indigo-500 uppercase tracking-[0.2em] mt-1 truncate" title={formattedCompany.sub}>
+                  {formattedCompany.sub}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Navigation Links */}
-        <nav className={`flex-1 flex flex-col gap-3 overflow-y-auto overflow-x-hidden custom-scrollbar ${isSidebarExpanded ? 'px-6' : 'px-4'}`}>
+        <nav className={`flex-1 flex flex-col gap-2 overflow-y-auto overflow-x-hidden custom-scrollbar pt-6 ${isSidebarExpanded ? 'px-6' : 'px-3.5'}`}>
           <SidebarItem
             icon={<LayoutDashboard className="w-[22px] h-[22px] stroke-[2.5px]" />}
             label="Dashboard"
@@ -275,6 +313,7 @@ const AppLayout: React.FC = () => {
               isActive={pinnedItems.some(item => isActivePath(item.path))}
               isOpenInitially={true}
               isExpanded={isSidebarExpanded}
+              onExpand={toggleSidebar}
             >
               {pinnedItems.map(item => {
                 const ItemIcon = item.icon;
@@ -303,6 +342,7 @@ const AppLayout: React.FC = () => {
                 isActive={group.items.some(item => isActivePath(item.path))}
                 isOpenInitially={group.items.some(item => isActivePath(item.path))}
                 isExpanded={isSidebarExpanded}
+                onExpand={toggleSidebar}
               >
                 {group.items.map(item => {
                   const ItemIcon = item.icon;
@@ -323,7 +363,13 @@ const AppLayout: React.FC = () => {
         </nav>
 
         {/* Bottom User Area */}
-        <div className={`p-6 border-t border-slate-100 dark:border-white/[0.08] mt-auto ${!isSidebarExpanded && 'flex justify-center'}`}>
+        <div className={`p-3.5 border-t border-slate-100 dark:border-white/[0.08] mt-auto flex flex-col gap-1.5 ${!isSidebarExpanded && 'items-center'}`}>
+          <SidebarItem
+            icon={isSidebarExpanded ? <ChevronLeft className="w-[22px] h-[22px] stroke-[2.5px]" /> : <ChevronRight className="w-[22px] h-[22px] stroke-[2.5px]" />}
+            label={isSidebarExpanded ? "Collapse Menu" : "Expand Menu"}
+            isExpanded={isSidebarExpanded}
+            onClick={toggleSidebar}
+          />
           <SidebarItem icon={<LogOut className="w-[22px] h-[22px] stroke-[2.5px]" />} label="Sign Out" isExpanded={isSidebarExpanded} onClick={handleLogout} />
         </div>
       </motion.aside>
