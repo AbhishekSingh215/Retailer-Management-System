@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace RMS.Core.Entities;
@@ -98,4 +98,6 @@ public partial class Purchase
     public bool? PurIsSynced { get; set; }
 
     public bool? PurStockAudit { get; set; }
+
+    public string? PurStatus { get; set; }
 }

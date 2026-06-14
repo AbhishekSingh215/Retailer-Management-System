@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using RMS.Core.Entities;
@@ -1537,6 +1537,10 @@ public partial class ApplicationDbContext : DbContext
                 .HasDefaultValue(0m)
                 .HasColumnType("decimal(14, 4)");
             entity.Property(e => e.PurVerify).HasDefaultValue(false);
+            entity.Property(e => e.PurStatus)
+                .HasMaxLength(50)
+                .IsUnicode(false)
+                .HasDefaultValue("Draft");
         });
 
         modelBuilder.Entity<PurchaseChargeTrn>(entity =>

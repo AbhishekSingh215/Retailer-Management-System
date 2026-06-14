@@ -3,7 +3,8 @@ import {
   ShoppingCart, 
   Percent, 
   Hash, 
-  BadgePercent
+  BadgePercent,
+  Users
 } from 'lucide-react';
 
 export interface NavItem {
@@ -43,6 +44,14 @@ export const NAVIGATION_REGISTRY: NavGroup[] = [
         icon: Percent,
         description: 'Configure tax percentages, CGST, SGST, IGST, and cess settings.',
         keywords: ['tax', 'gst', 'cgst', 'sgst', 'igst', 'percent', 'tax rate']
+      },
+      {
+        id: 'customer-master',
+        label: 'Customer Master',
+        path: '/customer-master',
+        icon: Users,
+        description: 'Manage customer profiles, contact details, GST and address information.',
+        keywords: ['customer', 'client', 'party', 'buyer', 'contact', 'mobile', 'gst', 'pan']
       }
     ]
   },

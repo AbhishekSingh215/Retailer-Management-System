@@ -19,6 +19,8 @@ public class SalesInvoiceDto
     public long? PurSalesmanId { get; set; }
     public string SalesmanName { get; set; } = string.Empty;
     public string Status { get; set; } = "EDIT";
+    public decimal? PurDiscountPercent { get; set; }
+    public string Remarks { get; set; } = string.Empty;
     public bool? PurExclusiveBill { get; set; }
     public bool? PurCreditBill { get; set; }
     public decimal? PurCashAmount { get; set; }
@@ -47,9 +49,11 @@ public class SalesLineItemDto
     public decimal Mrp { get; set; }
     public decimal SelPrice { get; set; }
     public decimal Discount { get; set; }
+    public decimal PerDiscount { get; set; }
     public decimal Qty { get; set; }
     public decimal Amount { get; set; }
     public bool IsIndividual { get; set; }
     public bool IsNoStockChecking { get; set; }
     public decimal AvailableStock { get; set; }
+    public decimal? DiscountPercent { get; set; }
 }

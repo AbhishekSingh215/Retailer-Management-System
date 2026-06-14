@@ -23,6 +23,7 @@ export interface LineItem {
   selPrice: number;
   discount: number;
   rowDiscount?: number;
+  rowDiscountPercent?: number;
   lastTaxCalculatedPrice?: number;
   hsn: string;
   taxDesc: string;
@@ -104,6 +105,7 @@ export const useSalesLogic = () => {
   // State for header
   const [mobileNumber, setMobileNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [remarks, setRemarks] = useState('');
   const [docNo, setDocNo] = useState("Loading...");
   const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
   const [formMode, setFormMode] = useState<'NEW' | 'VIEW' | 'EDIT' | 'LOCKED'>('NEW');
@@ -175,7 +177,7 @@ export const useSalesLogic = () => {
   // Dynamic Calculations for Totals & Footer
   const totalQty = distributedItems.reduce((sum, item) => sum + item.qty, 0);
   const grossAmount = items.reduce((sum, item) => sum + item.amount + (item.taxAmt || 0), 0);
-  const totalDiscount = items.reduce((sum, item) => sum + (item.discount * item.qty), 0);
+  const totalDiscount = items.reduce((sum, item) => sum + ((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) * item.qty), 0);
   const totalTaxAmt = distributedItems.reduce((sum, item) => sum + (item.taxAmt || 0), 0);
   const rawNetPayable = distributedItems.reduce((sum, item) => sum + item.amount, 0) + totalTaxAmt;
   const netPayable = Math.round(rawNetPayable);
@@ -295,6 +297,7 @@ export const useSalesLogic = () => {
     setDocDate(new Date().toISOString().split('T')[0]);
     setCustomerName("");
     setMobileNumber("");
+    setRemarks("");
     setPurSalesmanId(null);
     setSalesmanSearch("");
     setIsSalesmanDropdownOpen(false);
@@ -324,10 +327,8 @@ export const useSalesLogic = () => {
         setMobileNumber(data.mobileNumber || data.MobileNumber || inv.mobileNumber);
         setPurSalesmanId(data.purSalesmanId || data.PurSalesmanId || null);
         setSalesmanSearch(data.salesmanName || data.SalesmanName || "");
-        setIsUserTypingMobile(false);
-        setGlobalDiscountPercent(0);
-        setGlobalDiscountAmount(0);
-        setGlobalDiscountMode('percent');
+        setRemarks(data.remarks || "");
+        const loadedDiscountPercent = data.purDiscountPercent || 0;
         setFormMode('VIEW');
         const loadedAmounts: Record<number, number> = {};
         const payments = data.payments || data.Payments || [];
@@ -348,29 +349,45 @@ export const useSalesLogic = () => {
         setIsPaymentModalOpen(false);
         setIsCredit(data.purCreditBill || data.PurCreditBill || false);
         const rawItems = data.items || data.Items || [];
-        const loadedItems: LineItem[] = rawItems.map((i: any) => ({
-          id: i.id || i.Id || Date.now().toString(),
-          barcode: i.barcode || i.Barcode || '',
-          sourceCode: i.sourceCode || i.SourceCode || '',
-          productCode: i.productCode || i.ProductCode || '',
-          color: i.color || i.Color || 'N/A',
-          isIndividual: i.isIndividual || i.IsIndividual || false,
-          isNoStockChecking: i.isNoStockChecking || i.IsNoStockChecking || false,
-          availableStock: i.availableStock !== undefined ? i.availableStock : (i.AvailableStock !== undefined ? i.AvailableStock : 0),
-          category: i.category || i.Category || 'General',
-          size: i.size || i.Size || 'Free',
-          mrp: i.mrp || i.Mrp || 0,
-          selPrice: i.selPrice || i.SelPrice || 0,
-          discount: i.discount || i.Discount || 0,
-          rowDiscount: i.discount || i.Discount || 0,
-          hsn: i.hsn || i.Hsn || '9999',
-          taxDesc: i.taxDesc || i.TaxDesc || 'GST 0%',
-          taxAmt: i.taxAmt !== undefined ? i.taxAmt : (i.TaxAmt !== undefined ? i.TaxAmt : 0),
-          qty: i.qty || i.Qty || 1,
-          amount: i.amount || i.Amount || 0,
-          taxId: i.taxId || i.TaxId || undefined,
-          taxRate: i.taxRate !== undefined ? i.taxRate : (i.TaxRate !== undefined ? i.TaxRate : 0)
-        }));
+        const loadedItems: LineItem[] = rawItems.map((i: any) => {
+          const sPrice = i.selPrice || i.SelPrice || 0;
+          const rDiscount = i.perDiscount !== undefined ? i.perDiscount : (i.PerDiscount !== undefined ? i.PerDiscount : (i.discount || i.Discount || 0));
+          const rDiscountPercent = sPrice > 0 ? (rDiscount / sPrice) * 100 : 0;
+          return {
+            id: i.id || i.Id || Date.now().toString(),
+            barcode: i.barcode || i.Barcode || '',
+            sourceCode: i.sourceCode || i.SourceCode || '',
+            productCode: i.productCode || i.ProductCode || '',
+            color: i.color || i.Color || 'N/A',
+            isIndividual: i.isIndividual || i.IsIndividual || false,
+            isNoStockChecking: i.isNoStockChecking || i.IsNoStockChecking || false,
+            availableStock: i.availableStock !== undefined ? i.availableStock : (i.AvailableStock !== undefined ? i.AvailableStock : 0),
+            category: i.category || i.Category || 'General',
+            size: i.size || i.Size || 'Free',
+            mrp: i.mrp || i.Mrp || 0,
+            selPrice: sPrice,
+            discount: i.discount || i.Discount || 0,
+            rowDiscount: rDiscount,
+            rowDiscountPercent: rDiscountPercent,
+            hsn: i.hsn || i.Hsn || '9999',
+            taxDesc: i.taxDesc || i.TaxDesc || 'GST 0%',
+            taxAmt: i.taxAmt !== undefined ? i.taxAmt : (i.TaxAmt !== undefined ? i.TaxAmt : 0),
+            qty: i.qty || i.Qty || 1,
+            amount: i.amount || i.Amount || 0,
+            taxId: i.taxId || i.TaxId || undefined,
+            taxRate: i.taxRate !== undefined ? i.taxRate : (i.TaxRate !== undefined ? i.TaxRate : 0)
+          };
+        });
+
+        const totalAmountAfterRowDiscount = loadedItems.reduce((sum, item) => {
+          const rowDisc = item.rowDiscount !== undefined ? item.rowDiscount : item.discount;
+          return sum + (item.selPrice - rowDisc) * item.qty;
+        }, 0);
+        const loadedDiscountAmount = (totalAmountAfterRowDiscount * loadedDiscountPercent) / 100;
+
+        setGlobalDiscountPercent(loadedDiscountPercent);
+        setGlobalDiscountAmount(loadedDiscountAmount);
+        setGlobalDiscountMode('percent');
         setItems(loadedItems);
         setIsHistoryOpen(false);
       } else {
@@ -434,6 +451,8 @@ export const useSalesLogic = () => {
       netAmount: distributedItems.reduce((sum, i) => sum + i.amount, 0),
       totalQty: distributedItems.reduce((sum, i) => sum + i.qty, 0),
       status: targetStatus,
+      purDiscountPercent: globalDiscountPercent,
+      remarks: remarks,
       purCreditBill: isCredit,
       payments: paymentTypes.map(t => ({
         paymentTypeId: t.id,
@@ -455,6 +474,8 @@ export const useSalesLogic = () => {
         mrp: i.mrp,
         selPrice: i.selPrice,
         discount: i.discount,
+        perDiscount: i.rowDiscount || 0,
+        discountPercent: i.rowDiscountPercent || 0,
         qty: i.qty,
         amount: i.amount,
         taxDesc: i.taxDesc,
@@ -465,9 +486,13 @@ export const useSalesLogic = () => {
     };
 
     try {
+      const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE_URL}/sales`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -813,7 +838,7 @@ export const useSalesLogic = () => {
         const data = await response.json();
 
         setSearchResults(data);
-        setShowResults(data.length > 0);
+        setShowResults(true);
       } catch (error) {
         console.error('Customer search failed:', error);
       } finally {
@@ -833,7 +858,8 @@ export const useSalesLogic = () => {
   };
 
   const handleMobileChange = (val: string) => {
-    setMobileNumber(val);
+    const sanitizedVal = val.replace(/\D/g, '');
+    setMobileNumber(sanitizedVal);
     setIsUserTypingMobile(true);
   };
 
@@ -841,7 +867,7 @@ export const useSalesLogic = () => {
   const [cartSearch, setCartSearch] = useState('');
 
   // Filtered items for display
-  const filteredItems = items.filter(item =>
+  const filteredItems = distributedItems.filter(item =>
     item.productCode.toLowerCase().includes(cartSearch.toLowerCase()) ||
     item.barcode.includes(cartSearch)
   );
@@ -1010,6 +1036,7 @@ export const useSalesLogic = () => {
           selPrice: data.barcodeSelPrice,
           discount: 0,
           rowDiscount: 0,
+          rowDiscountPercent: 0,
           hsn: data.hsnCode,
           taxDesc: data.taxDesc || 'GST 0%',
           taxAmt: 0,
@@ -1118,6 +1145,7 @@ export const useSalesLogic = () => {
         const discVal = (item.selPrice * clampedPercent) / 100;
         return {
           ...item,
+          rowDiscountPercent: clampedPercent,
           rowDiscount: discVal,
           discount: discVal
         };
@@ -1133,8 +1161,10 @@ export const useSalesLogic = () => {
     const nextItems = items.map(item => {
       if (item.id === id) {
         const clampedDiscount = Math.max(0, Math.min(item.selPrice, discount || 0));
+        const percent = item.selPrice > 0 ? (clampedDiscount / item.selPrice) * 100 : 0;
         return {
           ...item,
+          rowDiscountPercent: percent,
           rowDiscount: clampedDiscount,
           discount: clampedDiscount
         };
@@ -1152,10 +1182,14 @@ export const useSalesLogic = () => {
     const sanitizedPrice = isNaN(newPrice) || newPrice < 0 ? 0 : newPrice;
     const nextItems = items.map(item => {
       if (item.id === id) {
+        const percent = item.rowDiscountPercent !== undefined ? item.rowDiscountPercent : 0;
+        const discVal = (sanitizedPrice * percent) / 100;
         return {
           ...item,
           selPrice: sanitizedPrice,
           mrp: sanitizedPrice,
+          rowDiscount: discVal,
+          discount: discVal,
           amount: sanitizedPrice * item.qty
         };
       }
@@ -1195,6 +1229,7 @@ export const useSalesLogic = () => {
         selPrice: price,
         discount: 0,
         rowDiscount: 0,
+        rowDiscountPercent: 0,
         hsn: pendingNoStockItem.hsnCode,
         taxDesc: pendingNoStockItem.taxDesc || 'GST 0%',
         taxAmt: 0,
@@ -1239,6 +1274,8 @@ export const useSalesLogic = () => {
     setMobileNumber,
     customerName,
     setCustomerName,
+    remarks,
+    setRemarks,
     docNo,
     setDocNo,
     docDate,
@@ -1251,7 +1288,7 @@ export const useSalesLogic = () => {
     setIsHistoryOpen,
     historySearch,
     setHistorySearch,
-    items,
+    items: distributedItems,
     setItems,
     savedInvoicesList,
     setSavedInvoicesList,

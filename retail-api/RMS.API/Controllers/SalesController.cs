@@ -105,6 +105,7 @@ public class SalesController : ControllerBase
                 x.p.PurComments,
                 x.p.PurBillNo,
                 x.p.PurVerify,
+                x.p.PurStatus,
                 x.p.PurId,
                 x.p.PurGrossAmount,
                 x.p.PurNetAmount,
@@ -120,7 +121,7 @@ public class SalesController : ControllerBase
             docDate = x.PurDocDate.HasValue ? x.PurDocDate.Value.ToString("yyyy-MM-dd") : DateTime.UtcNow.ToString("yyyy-MM-dd"),
             customerName = x.CustomerName ?? x.PurComments ?? "Walk-in Customer",
             mobileNumber = x.CustomerMobile ?? x.PurBillNo ?? "",
-            status = x.PurVerify == true ? "LOCKED" : "EDIT",
+            status = (x.PurStatus != "Draft") ? "LOCKED" : "EDIT",
             purId = x.PurId,
             grossAmount = x.PurGrossAmount ?? 0,
             netAmount = x.PurNetAmount ?? 0,
@@ -295,7 +296,9 @@ public class SalesController : ControllerBase
                 TaxRate = taxRate,
                 Mrp = t.PurtMrp ?? 0,
                 SelPrice = t.PurtSelPrice ?? 0,
-                Discount = t.PurtDiscAmount ?? 0,
+                Discount = t.PurtPerDiscount ?? 0,
+                PerDiscount = t.PurtDiscAmount ?? 0,
+                DiscountPercent = t.PurtDiscountPercent ?? 0,
                 Qty = t.PurtCreditQty ?? 0,
                 Amount = t.PurtCreditAmount ?? 0,
                 IsIndividual = pm?.ProductIndividualBarcode == true,
@@ -313,13 +316,15 @@ public class SalesController : ControllerBase
             DocDate = header.PurDocDate.HasValue ? header.PurDocDate.Value.ToString("yyyy-MM-dd") : DateTime.UtcNow.ToString("yyyy-MM-dd"),
             CustomerName = cust != null ? cust.CustomerName : (header.PurComments ?? "Walk-in Customer"),
             MobileNumber = cust != null ? (cust.CustomerMobileNo ?? "") : (header.PurBillNo ?? ""),
+            Remarks = header.PurComments ?? string.Empty,
             GrossAmount = header.PurGrossAmount ?? 0,
             DiscountAmount = header.PurDiscountAmount ?? 0,
             NetAmount = header.PurNetAmount ?? 0,
             TotalQty = header.PurTotalQty ?? 0,
             PurSalesmanId = header.PurSalesmanId,
             SalesmanName = salesman?.SalesmanName ?? "",
-            Status = header.PurVerify == true ? "LOCKED" : "EDIT",
+            Status = (header.PurStatus != "Draft") ? "LOCKED" : "EDIT",
+            PurDiscountPercent = header.PurDiscountPercent,
             PurExclusiveBill = header.PurExclusiveBill,
             PurCreditBill = header.PurCreditBill,
             PurCashAmount = header.PurCashAmount,
@@ -350,6 +355,13 @@ public class SalesController : ControllerBase
         try
         {
             if (request == null) return BadRequest(new { message = "Invalid request payload." });
+
+            long userId = 0;
+            var nameIdentifierClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(nameIdentifierClaim) && long.TryParse(nameIdentifierClaim, out long parsedUserId))
+            {
+                userId = parsedUserId;
+            }
 
             if (request.Items == null || !request.Items.Any())
             {
@@ -497,27 +509,49 @@ public class SalesController : ControllerBase
                     !p.IsDeleted);
             }
 
+            var companyProfile = await _context.CompanyProfiles.AsNoTracking().FirstOrDefaultAsync(c => c.CompanyId == request.CompanyId);
+            string locationStr = companyProfile?.CompanyLocation.ToString() ?? "100";
+            if (string.IsNullOrEmpty(locationStr))
+            {
+                locationStr = "100";
+            }
+
             bool isNew = false;
             if (header == null)
             {
                 isNew = true;
 
-                long maxPurId = await _context.Purchases
-                    .AsNoTracking()
-                    .OrderByDescending(p => p.PurId)
-                    .Select(p => p.PurId)
-                    .FirstOrDefaultAsync();
+                long maxPurId = _context.GetMaxPknolocation("Purchase", locationStr, "PurId", "PurLocation", "PurMaxPkno");
+                long maxPurPkNo = 0;
+                string maxPurIdStr = maxPurId.ToString();
+                if (maxPurIdStr.StartsWith(locationStr) && maxPurIdStr.Length > locationStr.Length)
+                {
+                    maxPurPkNo = long.Parse(maxPurIdStr.Substring(locationStr.Length));
+                }
 
                 header = new Purchase
                 {
-                    PurId = maxPurId + 1,
+                    PurId = maxPurId,
+                    PurMaxPkno = maxPurPkNo,
                     PurCompanyId = request.CompanyId,
                     PurCompanyCount = request.CompanyCount,
                     PurType = DocTypeConstants.SalesInvoice, // Sales FormType
                     PurDocno = request.DocNo,
-                    PurRecordCreated = DateTime.UtcNow
+                    PurLocation = companyProfile?.CompanyLocation,
+                    PurRecordCreated = DateTime.UtcNow,
+                    PurUserNewId = userId
                 };
                 _context.Purchases.Add(header);
+            }
+
+            if (header != null && (!header.PurMaxPkno.HasValue || header.PurMaxPkno.Value == 0) && header.PurLocation.HasValue)
+            {
+                string loc = header.PurLocation.Value.ToString();
+                string purIdStr = header.PurId.ToString();
+                if (purIdStr.StartsWith(loc) && purIdStr.Length > loc.Length)
+                {
+                    header.PurMaxPkno = long.Parse(purIdStr.Substring(loc.Length));
+                }
             }
 
             Customer? cust = null;
@@ -555,13 +589,17 @@ public class SalesController : ControllerBase
             }
 
             header.PurCustomerId = cust?.CustomerId;
+            header.PurSupplierId = header.PurSupplierId ?? 0;
             header.PurDocDate = parsedDate;
-            header.PurComments = request.CustomerName; // Keep as fallback / comment
-            header.PurBillNo = request.MobileNumber;   // Keep as fallback / billno
+            header.PurComments = string.IsNullOrWhiteSpace(request.Remarks) ? request.CustomerName : request.Remarks;
+            header.PurBillNo = ""; // Set to empty string or null as per request (not customer mobile no anymore)
             header.PurSalesmanId = request.PurSalesmanId;
-            header.PurVerify = request.Status == "LOCKED";
+            header.PurStatus = request.Status == "LOCKED" ? "Completed" : "Draft";
             header.PurExclusiveBill = request.PurExclusiveBill ?? false;
             header.PurCreditBill = request.PurCreditBill ?? false;
+            header.PurDiscountPercent = request.PurDiscountPercent ?? 0;
+            header.PurLastModified = userId;
+            header.PurRecordModified = DateTime.UtcNow;
             if (request.Payments != null && request.Payments.Any())
             {
                 header.PurCashAmount = 0;
@@ -601,12 +639,6 @@ public class SalesController : ControllerBase
             }
 
             // Add new line items
-            long maxPurtId = await _context.PurchaseTrns
-                .AsNoTracking()
-                .OrderByDescending(t => t.PurtId)
-                .Select(t => (long?)t.PurtId)
-                .FirstOrDefaultAsync() ?? 0;
-
             decimal totalCgst = 0;
             decimal totalSgst = 0;
             decimal totalIgst = 0;
@@ -619,7 +651,6 @@ public class SalesController : ControllerBase
             if (cust != null && !string.IsNullOrEmpty(cust.CustomerGstNo) && cust.CustomerGstNo.Length >= 2)
             {
                 string custStateCode = cust.CustomerGstNo.Substring(0, 2);
-                var companyProfile = await _context.CompanyProfiles.FirstOrDefaultAsync(c => c.CompanyId == request.CompanyId);
                 string compStateCode = "";
                 if (companyProfile != null)
                 {
@@ -639,9 +670,25 @@ public class SalesController : ControllerBase
                 }
             }
 
+            long startPurtId = _context.GetMaxPknolocation("PurchaseTrn", locationStr, "PurtId", "PurtLocation", "PurtMaxPkno");
+            long startPurtPkNo = 1;
+            string startPurtIdStr = startPurtId.ToString();
+            if (startPurtIdStr.StartsWith(locationStr) && startPurtIdStr.Length > locationStr.Length)
+            {
+                startPurtPkNo = long.Parse(startPurtIdStr.Substring(locationStr.Length));
+            }
+            else
+            {
+                startPurtPkNo = startPurtId;
+            }
+
+            int itemIndex = 0;
             foreach (var item in request.Items)
             {
-                maxPurtId++;
+                long currentPurtPkNo = startPurtPkNo + itemIndex;
+                long nextPurtId = startPurtIdStr.StartsWith(locationStr) ? long.Parse(locationStr + currentPurtPkNo.ToString()) : currentPurtPkNo;
+                itemIndex++;
+
                 var bd = await _context.BarcodeDetails.FirstOrDefaultAsync(b => b.BarcodeDesc == item.Barcode || b.BarcodeSourceBarcode == item.Barcode);
                 var pm = bd != null ? await _context.ProductMasters.FirstOrDefaultAsync(p => p.ProductId == bd.BarcodeProductId) : null;
 
@@ -706,15 +753,24 @@ public class SalesController : ControllerBase
 
                 var trn = new PurchaseTrn
                 {
-                    PurtId = maxPurtId,
+                    PurtId = nextPurtId,
+                    PurtMaxPkno = currentPurtPkNo,
                     PurtPurId = header.PurId,
+                    Purtsdocno = 0,
+                    PurtOrderBy = 1,
+                    PurtProductId = bd?.BarcodeProductId ?? 0,
+                    PurtColorId = bd?.BarcodeColorId ?? 0,
+                    PurtSizeId = bd?.BarcodeSizeId ?? 0,
+                    PurtSubSizeId = bd?.BarcodeSubSizeId ?? 0,
+                    PurtLocation = companyProfile?.CompanyLocation,
                     PurtBarcodeId = bd?.BarcodeId,
                     PurtSize = item.Size,
                     PurtSourcecode = item.SourceCode,
-                    PurtRemarks = item.ProductCode,
+                    PurtRemarks = null,
                     PurtMrp = item.Mrp,
                     PurtSelPrice = item.SelPrice,
-                    PurtDiscAmount = item.Discount,
+                    PurtDiscAmount = item.PerDiscount,
+                    PurtDebitQty = 0,
                     PurtCreditQty = item.Qty,
                     PurtCreditAmount = baseAmount,
                     PurtHsnId = pm?.ProductHsnId,
@@ -724,7 +780,25 @@ public class SalesController : ControllerBase
                     PurtTaxAmount1 = taxamount1,
                     PurtTaxAmount2 = taxamount2,
                     PurtPurchaseRate = item.Mrp, // Rate matches Mrp in POS
-                    PurtPerDiscount = item.Discount, // Discount per unit
+                    PurtPerDiscount = item.Discount,
+                    PurtDiscountPercent = item.DiscountPercent ?? 0,
+                    PurtCostRate = bd?.BarcodeRate ?? 0,
+                    PurtPerQty = 0,
+                    PurtDebitAmount = 0,
+                    PurtParentId = 0,
+                    PurtReverseTaxAmount1 = 0,
+                    PurtReverseTaxAmount2 = 0,
+                    PurtMiddleMrp = 0,
+                    PurtMiddleSelPrice = 0,
+                    PurtSizeFrom = "",
+                    PurtSizeTo = "",
+                    PurtSizeMiddle = "",
+                    PurtSelPriceDiscPercent = 0,
+                    PurtRateDiff = 0,
+                    PurtMrpDiff = 0,
+                    PurtMarkDown = false,
+                    PurtMarkDownPercent = 0,
+                    PurtSalesmanId = header.PurSalesmanId ?? 0,
                     PurtRecordCreated = DateTime.UtcNow,
                     PurtRecordModified = DateTime.UtcNow
                 };
@@ -732,8 +806,15 @@ public class SalesController : ControllerBase
             }
 
             // Update header totals
+            decimal totalAmountAfterRowDiscount = request.Items.Sum(i => (i.SelPrice - i.PerDiscount) * i.Qty);
+            decimal billDiscountAmount = 0;
+            if (header.PurDiscountPercent.HasValue && header.PurDiscountPercent.Value > 0)
+            {
+                billDiscountAmount = Math.Round((totalAmountAfterRowDiscount * header.PurDiscountPercent.Value) / 100, 2);
+            }
+
             header.PurGrossAmount = grossAmount;
-            header.PurDiscountAmount = discountAmount;
+            header.PurDiscountAmount = billDiscountAmount;
             header.PurTotalQty = totalQty;
             header.PurCgstAmount = totalCgst;
             header.PurSgstAmount = totalSgst;

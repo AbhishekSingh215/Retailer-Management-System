@@ -5,6 +5,7 @@ import Dashboard from './features/dashboard/Dashboard';
 import SalesEntry from './features/sales/SalesEntry';
 import HsnMaster from './features/masters/HsnMaster';
 import TaxMaster from './features/masters/TaxMaster';
+import CustomerMaster from './features/masters/CustomerMaster';
 import Launchpad from './features/dashboard/Launchpad';
 import NotFound from './features/error/NotFound';
 
@@ -34,6 +35,7 @@ function App() {
             <Route path="sales" element={<SalesEntry />} />
             <Route path="hsn-master" element={<HsnMaster />} />
             <Route path="tax-master" element={<TaxMaster />} />
+            <Route path="customer-master" element={<CustomerMaster />} />
 
             {/* Wildcard 404 Fallback inside shell */}
             <Route path="*" element={<NotFound />} />

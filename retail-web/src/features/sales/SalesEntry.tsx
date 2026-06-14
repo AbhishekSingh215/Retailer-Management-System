@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart,
@@ -24,16 +25,31 @@ import {
   Info,
   ChevronLeft,
   ChevronRight,
-  UserCheck
+  UserCheck,
+  Plus,
+  ChevronDown,
+  ChevronUp,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
+import { InfoBadge } from '../../components/ui/InfoBadge';
 import { useSalesLogic } from './useSalesLogic';
 import { LoadInvoiceModal } from './components/LoadInvoiceModal';
 import { SettlePaymentPanel } from './components/SettlePaymentPanel';
+import { SalesPopupNotification } from './components/SalesPopupNotification';
 
 const SalesEntry: React.FC = () => {
+  const customerNameInputRef = React.useRef<HTMLInputElement>(null);
+  const [newCustomerNameInput, setNewCustomerNameInput] = React.useState('');
+  const [isHeaderExpanded, setIsHeaderExpanded] = React.useState(true);
+  const [isTableMaximized, setIsTableMaximized] = React.useState(false);
+
   const {
     mobileNumber,
     customerName,
+    setCustomerName,
+    remarks,
+    setRemarks,
     docNo,
     docDate,
     setDocDate,
@@ -116,6 +132,22 @@ const SalesEntry: React.FC = () => {
     saveToBackend,
     paymentTypes
   } = useSalesLogic();
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsTableMaximized(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  React.useEffect(() => {
+    if (items.length === 1 && isHeaderExpanded) {
+      setIsHeaderExpanded(false);
+    }
+  }, [items.length]);
 
   const totalTaxAmt = cgstAmount + sgstAmount + igstAmount;
 
@@ -389,26 +421,26 @@ const SalesEntry: React.FC = () => {
   );
 
   const TotalsFooter = () => (
-    <div className="bg-white dark:bg-[#080808] border-t border-slate-200 dark:border-white/[0.1] px-8 py-4 flex justify-between items-center shadow-[0_-15px_40px_rgba(0,0,0,0.05)] shrink-0 z-20">
-      <div className="flex gap-10 items-center">
+    <div className="bg-white dark:bg-[#080808] border-t border-slate-200 dark:border-white/[0.1] px-4 py-2 flex justify-between items-center shadow-[0_-15px_40px_rgba(0,0,0,0.05)] shrink-0 z-20">
+      <div className="flex gap-5 items-center">
         <div className="flex flex-col gap-0.5">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Qty</span>
-          <span className="text-[18px] font-[1000] text-gray-900 dark:text-white leading-none">{totalQty.toFixed(2)}</span>
+          <span className="text-[15px] font-[1000] text-gray-900 dark:text-white leading-none">{totalQty.toFixed(2)}</span>
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Gross Amt</span>
-          <span className="text-[18px] font-[1000] text-gray-900 dark:text-white leading-none">₹{grossAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-[15px] font-[1000] text-gray-900 dark:text-white leading-none">₹{grossAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest">Item Disc</span>
-          <span className="text-[18px] font-[1000] text-rose-500 leading-none">-₹{totalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-[15px] font-[1000] text-rose-500 leading-none">-₹{totalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
         </div>
-        <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
+        <div className="h-8 w-[1px] bg-slate-200 dark:bg-white/10 mx-1.5"></div>
         <div className="flex flex-col gap-0.5 w-[115px] -mt-1">
           <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center whitespace-nowrap">
-            <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Disc %
+            <Tag className="w-3 h-3 text-rose-500" /> Bill Disc %
           </span>
-          <div className="relative mt-1">
+          <div className="relative mt-0.5">
             <input
               type="number"
               min="0"
@@ -421,16 +453,16 @@ const SalesEntry: React.FC = () => {
                 handleApplyGlobalDiscountPercent(isNaN(val) ? 0 : val);
               }}
               disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
-              className="w-full pl-2 pr-6 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full pl-2 pr-6 py-0.5 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-7 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70 disabled:cursor-not-allowed"
             />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">%</span>
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-[1000] text-slate-400 pointer-events-none">%</span>
           </div>
         </div>
         <div className="flex flex-col gap-0.5 w-[115px] -mt-1">
           <span className="text-[9px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 justify-center whitespace-nowrap">
-            <Tag className="w-3.5 h-3.5 text-rose-500" /> Bill Disc Amt
+            <Tag className="w-3 h-3 text-rose-500" /> Bill Disc Amt
           </span>
-          <div className="relative mt-1">
+          <div className="relative mt-0.5">
             <input
               type="number"
               min="0"
@@ -442,238 +474,359 @@ const SalesEntry: React.FC = () => {
                 handleApplyGlobalDiscountAmount(isNaN(val) ? 0 : val);
               }}
               disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
-              className="w-full pl-5 pr-2 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-8 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full pl-5 pr-2 py-0.5 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-center text-rose-600 dark:text-rose-400 focus:outline-none focus:border-rose-500 transition-all h-7 shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70 disabled:cursor-not-allowed"
             />
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-[1000] text-slate-400 pointer-events-none">₹</span>
+            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-[1000] text-slate-400 pointer-events-none">₹</span>
           </div>
         </div>
-        <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
+        <div className="h-8 w-[1px] bg-slate-200 dark:bg-white/10 mx-1.5"></div>
         <div className="flex flex-col gap-0.5">
           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Round Off</span>
-          <span className={`text-[18px] font-[1000] leading-none ${roundOff > 0 ? 'text-emerald-600 dark:text-emerald-400' : roundOff < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-white'}`}>
+          <span className={`text-[15px] font-[1000] leading-none ${roundOff > 0 ? 'text-emerald-600 dark:text-emerald-400' : roundOff < 0 ? 'text-rose-500' : 'text-slate-500 dark:text-white'}`}>
             {roundOff > 0 ? '+' : roundOff < 0 ? '-' : ''}₹{Math.abs(roundOff).toFixed(2)}
           </span>
         </div>
-        <div className="h-10 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
+        <div className="h-8 w-[1px] bg-slate-200 dark:bg-white/10 mx-1.5"></div>
         <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em]">Net Amount</span>
-          <div className="flex items-baseline gap-1">
-            <span className="text-[16px] font-black text-emerald-600 leading-none">₹</span>
-            <span className="text-[36px] font-[1000] text-emerald-600 leading-none tracking-tighter">{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-[9px] font-black text-emerald-600 uppercase tracking-[0.2em]">Net Amount</span>
+          <div className="flex items-baseline gap-0.5">
+            <span className="text-[14px] font-black text-emerald-600 leading-none">₹</span>
+            <span className="text-[26px] font-[1000] text-emerald-600 leading-none tracking-tighter">{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
         </div>
       </div>
-      <div className="flex gap-3">
-        <button onClick={handleNewSale} className="px-6 py-3 bg-slate-100 dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-black hover:bg-slate-200 transition-all flex items-center gap-2 text-slate-600 dark:text-white/60">
+      <div className="flex gap-2">
+        <button onClick={handleNewSale} className="px-4 py-2 bg-slate-100 dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[12px] font-black hover:bg-slate-200 transition-all flex items-center gap-1.5 text-slate-600 dark:text-white/60">
           <X className="w-4 h-4" /> Cancel
         </button>
         <button
           onClick={handleCompleteSale}
           disabled={items.length === 0 || isSaving}
-          className={`px-10 py-3 bg-indigo-600 text-white rounded-xl text-[14px] font-[1000] shadow-xl shadow-indigo-600/30 hover:-translate-y-1 hover:bg-indigo-700 transition-all flex items-center gap-2.5 ${items.length === 0 || isSaving ? 'opacity-50 cursor-not-allowed hover:translate-y-0' : ''}`}
+          className={`px-6 py-2 bg-indigo-600 text-white rounded-xl text-[13px] font-[1000] shadow-xl shadow-indigo-600/30 hover:-translate-y-1 hover:bg-indigo-700 transition-all flex items-center gap-2 ${items.length === 0 || isSaving ? 'opacity-50 cursor-not-allowed hover:translate-y-0' : ''}`}
         >
-          <CheckCircle2 className="w-5 h-5" /> {isSaving ? 'Settling...' : (formMode === 'LOCKED' || formMode === 'VIEW') ? 'View Payment Split (F10)' : 'Settle Payment (F10)'}
+          <CheckCircle2 className="w-4.5 h-4.5" /> {isSaving ? 'Settling...' : (formMode === 'LOCKED' || formMode === 'VIEW') ? 'View Payment Split (F10)' : 'Settle Payment (F10)'}
         </button>
       </div>
     </div>
   );
 
   const renderClassicView = () => (
-    <div className="flex flex-col h-full gap-2 p-3 pt-2 overflow-hidden bg-transparent">
-      {/* Classic Header & Scanning Section */}
-      <div className="flex flex-col gap-2 shrink-0 relative z-[50]">
-        {/* Row 1: Metadata Fields Grid */}
-        <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl p-3 grid grid-cols-1 md:grid-cols-3 gap-3.5 shadow-sm shrink-0">
-          <div className="flex flex-col gap-1 min-w-0">
-            <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2"><Search className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Customer Mobile</span>
-            <div className="relative group">
-              <input
-                type="text"
-                placeholder="Search..."
-                value={mobileNumber}
-                onChange={(e) => handleMobileChange(e.target.value)}
-                readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
-                onFocus={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && searchResults.length > 0 && setShowResults(true)}
-                onBlur={() => setTimeout(() => setShowResults(false), 200)}
-                className={`w-full px-4 py-1.5 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-300 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
-              />
-              <button disabled={formMode === 'VIEW' || formMode === 'LOCKED'} className={`absolute right-1 top-1/2 -translate-y-1/2 p-1 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg shadow-lg hover:bg-indigo-700 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-50 cursor-not-allowed' : ''}`}><Search className="w-3.5 h-3.5" /></button>
-
-              <AnimatePresence>
-                {showResults && viewMode === 'classic' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
-                  >
-                    {searchResults.map((customer) => (
-                      <button
-                        key={customer.id}
-                        onClick={() => handleCustomerSelect(customer)}
-                        className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
-                      >
-                        <div className="flex flex-col">
-                          <span className="text-[13px] font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{customer.name}</span>
-                          <span className="text-[10px] font-bold text-slate-400">{customer.mobile}</span>
-                        </div>
-                        <span className="text-[11px] font-black text-slate-700 dark:text-white/60">{customer.loyaltyPoints}</span>
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-          <div className="flex flex-col gap-1 min-w-0">
-            <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2"><User className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Customer Name</span>
-            <div className="px-4 py-1.5 bg-emerald-50/50 dark:bg-emerald-500/10 border-2 border-emerald-200 dark:border-emerald-500/30 rounded-xl flex items-center justify-between shadow-sm min-h-[38px]">
-              <div className="flex items-center gap-2 min-w-0">
-                <User className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                <span className={`text-[13px] font-[1000] truncate ${customerName ? "text-emerald-950 dark:text-emerald-300" : "text-slate-400 dark:text-white/30"}`}>
-                  {customerName || 'Walk-in Customer'}
-                </span>
-              </div>
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse flex-shrink-0"></div>
-            </div>
-          </div>
-          <div className="flex flex-col gap-1 min-w-0 relative">
-            <span className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
-              <UserCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Salesman
+    <div className="flex-1 flex flex-col gap-2.5 p-3.5 overflow-hidden min-h-0 bg-slate-50/30 dark:bg-transparent">
+      {/* Row 1: Metadata Fields Grid */}
+      <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl py-1.5 px-3 grid grid-cols-1 md:grid-cols-4 gap-2.5 shadow-sm shrink-0">
+        <div className="flex flex-col gap-0.5 min-w-0">
+          {isHeaderExpanded && (
+            <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-1.5">
+              <Search className="w-3 h-3 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Customer Mobile
             </span>
-            <div className="relative group">
-              <input
-                type="text"
-                placeholder="Type name to search..."
-                value={salesmanSearch}
-                onChange={(e) => {
-                  setSalesmanSearch(e.target.value);
-                  if (purSalesmanId) {
-                    setPurSalesmanId(null);
-                  }
-                  setIsSalesmanDropdownOpen(true);
-                }}
-                onFocus={() => {
-                  if (formMode !== 'VIEW' && formMode !== 'LOCKED') {
+          )}
+          <div className="relative group" onBlur={(e) => {
+            if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+              return;
+            }
+            setShowResults(false);
+          }}>
+            <input
+              type="text"
+              placeholder="Search mobile number..."
+              value={mobileNumber}
+              onChange={(e) => handleMobileChange(e.target.value)}
+              readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
+              onFocus={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && setShowResults(true)}
+              className={`w-full pl-3 pr-16 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[12.5px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-400 min-h-[32px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
+            />
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setIsHeaderExpanded(prev => !prev)}
+                className="p-1 hover:bg-slate-150 dark:hover:bg-white/10 rounded-lg text-indigo-600 dark:text-indigo-400 transition-all active:scale-95 flex items-center justify-center"
+                title={isHeaderExpanded ? "Hide Details" : "Show Details"}
+              >
+                {isHeaderExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+              <button disabled={formMode === 'VIEW' || formMode === 'LOCKED'} className={`p-0.5 bg-indigo-600 dark:bg-indigo-500 text-white rounded shadow hover:bg-indigo-700 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-50 cursor-not-allowed' : ''}`}><Search className="w-3 h-3" /></button>
+            </div>
+
+            <AnimatePresence>
+              {showResults && mobileNumber.trim().length >= 3 && viewMode === 'classic' && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -5 }}
+                  className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
+                >
+                  {searchResults.map((customer) => (
+                    <button
+                      key={customer.id}
+                      onClick={() => handleCustomerSelect(customer)}
+                      className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-[13px] font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{customer.name}</span>
+                        <span className="text-[10px] font-bold text-slate-400">{customer.mobile}</span>
+                      </div>
+                      <span className="text-[11px] font-black text-slate-700 dark:text-white/60">{customer.loyaltyPoints}</span>
+                    </button>
+                  ))}
+                  <div className="p-3 bg-slate-50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.05]">
+                    <span className="text-[11px] font-[1000] text-indigo-650 dark:text-indigo-400 block mb-1.5 uppercase tracking-wider">New Customer Info</span>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter Customer Name..."
+                        value={newCustomerNameInput}
+                        onChange={(e) => setNewCustomerNameInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (newCustomerNameInput.trim()) {
+                              setCustomerName(newCustomerNameInput.trim());
+                              setShowResults(false);
+                              setNewCustomerNameInput('');
+                            }
+                          }
+                        }}
+                        className="flex-1 px-3 py-1 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[11px] font-bold text-black dark:text-white outline-none focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newCustomerNameInput.trim()) {
+                            setCustomerName(newCustomerNameInput.trim());
+                            setShowResults(false);
+                            setNewCustomerNameInput('');
+                          }
+                        }}
+                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-[1000] transition-all flex items-center gap-1 shrink-0"
+                      >
+                        <Plus className="w-3 h-3" /> Map Name
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+        {!isHeaderExpanded ? (
+          <>
+            {/* Customer Name Badge */}
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <div className="px-3 bg-emerald-50/50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-xl flex items-center justify-between shadow-sm min-h-[32px] text-[12.5px] font-[1000] text-emerald-955 dark:text-emerald-300 truncate" title={customerName || 'Walk-in Customer'}>
+                <div className="flex items-center gap-1.5 min-w-0 w-full">
+                  <User className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="truncate">{customerName || 'Walk-in Customer'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Salesman Badge */}
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <div className="px-3 bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 rounded-xl flex items-center justify-between shadow-sm min-h-[32px] text-[12.5px] font-[1000] text-indigo-955 dark:text-indigo-300 truncate" title={salesmanSearch || 'No Salesman'}>
+                <div className="flex items-center gap-1.5 min-w-0 w-full">
+                  <UserCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span className="truncate">{salesmanSearch || 'No Salesman'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Remarks Badge */}
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <div className="px-3 bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-xl flex items-center justify-between shadow-sm min-h-[32px] text-[12.5px] font-[1000] text-black dark:text-white truncate" title={remarks || 'No Remarks'}>
+                <div className="flex items-center gap-1.5 min-w-0 w-full">
+                  <FileText className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+                  <span className="truncate">{remarks || 'No Remarks'}</span>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-1.5"><User className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Customer Name</span>
+              <div className="px-3 py-1 bg-emerald-50/50 dark:bg-emerald-500/10 border-2 border-emerald-200 dark:border-emerald-500/30 rounded-xl flex items-center justify-between shadow-sm min-h-[32px]">
+                <div className="flex items-center gap-2 min-w-0 w-full">
+                  <User className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                  {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                    <input
+                      ref={customerNameInputRef}
+                      type="text"
+                      placeholder="Walk-in Customer"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      className="w-full bg-transparent border-0 p-0 text-[12.5px] font-[1000] focus:ring-0 focus:outline-none text-emerald-950 dark:text-emerald-300 placeholder-emerald-800/30 outline-none h-6"
+                    />
+                  ) : (
+                    <span className={`text-[12.5px] font-[1000] truncate ${customerName ? "text-emerald-950 dark:text-emerald-300" : "text-slate-400 dark:text-white/30"}`}>
+                      {customerName || 'Walk-in Customer'}
+                    </span>
+                  )}
+                </div>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse flex-shrink-0"></div>
+              </div>
+            </div>
+            <div className="flex flex-col gap-0.5 min-w-0 relative">
+              <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Salesman
+              </span>
+              <div className="relative group">
+                <input
+                  type="text"
+                  placeholder="Type name..."
+                  value={salesmanSearch}
+                  onChange={(e) => {
+                    setSalesmanSearch(e.target.value);
+                    if (purSalesmanId) {
+                      setPurSalesmanId(null);
+                    }
                     setIsSalesmanDropdownOpen(true);
-                  }
-                }}
-                onBlur={() => {
-                  setTimeout(() => setIsSalesmanDropdownOpen(false), 200);
-                }}
-                readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
-                className={`w-full px-4 py-1.5 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-300 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
-              />
-              <AnimatePresence>
-                {isSalesmanDropdownOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
-                  >
-                    {salesmenList
-                      .filter(s =>
+                  }}
+                  onFocus={() => {
+                    if (formMode !== 'VIEW' && formMode !== 'LOCKED') {
+                      setIsSalesmanDropdownOpen(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setIsSalesmanDropdownOpen(false), 200);
+                  }}
+                  readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
+                  className={`w-full px-3 py-1 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[12.5px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-300 min-h-[32px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
+                />
+                <AnimatePresence>
+                  {isSalesmanDropdownOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
+                    >
+                      {salesmenList
+                        .filter(s =>
+                          (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
+                          (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
+                        )
+                        .map((salesman) => (
+                          <button
+                            key={salesman.id}
+                            type="button"
+                            onClick={() => {
+                              setPurSalesmanId(salesman.id);
+                              setSalesmanSearch(salesman.name);
+                              setIsSalesmanDropdownOpen(false);
+                            }}
+                            className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-[14px] font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{salesman.name}</span>
+                              {salesman.code && <span className="text-[11px] font-bold text-slate-400">{salesman.code}</span>}
+                            </div>
+                          </button>
+                        ))
+                      }
+                      {salesmenList.filter(s =>
                         (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
                         (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
-                      )
-                      .map((salesman) => (
-                        <button
-                          key={salesman.id}
-                          type="button"
-                          onClick={() => {
-                            setPurSalesmanId(salesman.id);
-                            setSalesmanSearch(salesman.name);
-                            setIsSalesmanDropdownOpen(false);
-                          }}
-                          className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
-                        >
-                          <div className="flex flex-col">
-                            <span className="text-[14px] font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{salesman.name}</span>
-                            {salesman.code && <span className="text-[11px] font-bold text-slate-400">{salesman.code}</span>}
-                          </div>
-                        </button>
-                      ))
-                    }
-                    {salesmenList.filter(s =>
-                      (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
-                      (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
-                    ).length === 0 && (
-                        <div className="px-4 py-3 text-slate-400 text-[12px] font-bold">No salesmen found</div>
-                      )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                      ).length === 0 && (
+                          <div className="px-4 py-3 text-slate-400 text-[12px] font-bold">No salesmen found</div>
+                        )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
+
+            {/* Remarks */}
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Remarks
+              </span>
+              <input
+                type="text"
+                placeholder="Billing remarks..."
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
+                className={`w-full px-3 py-1 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[12.5px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-350 min-h-[32px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
+              />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Row 2: Scanning Command Bar - EVEN SLIMMER */}
+      <div className="bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] rounded-2xl py-1 px-3 flex items-center gap-3.5 shadow-md shrink-0">
+        <div className="flex items-center gap-2.5 flex-1">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl border border-indigo-100 dark:border-indigo-500/20">
+            <span className="text-[10.5px] font-[1000] text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
+              <div className="w-3.5 h-3.5 flex items-center justify-center bg-indigo-600 text-white rounded text-[8px] font-black">1</div>
+              Scancode
+            </span>
+          </div>
+          <div className="flex-1 relative group">
+            {pendingNoStockItem ? (
+              <div className="relative flex items-center w-full">
+                <span className="absolute left-3 text-[11px] font-black text-emerald-600 dark:text-emerald-400 select-none uppercase tracking-wider">Set Sel Price: ₹</span>
+                <input
+                  type="number"
+                  autoFocus
+                  placeholder="0.00"
+                  value={noStockSelPrice}
+                  onChange={(e) => setNoStockSelPrice(e.target.value)}
+                  onKeyDown={handleNoStockPriceSubmit}
+                  className="w-full pl-28 pr-8 py-1 bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-500 rounded-xl text-[13px] font-[1000] text-black dark:text-white focus:outline-none transition-all shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <button
+                  onClick={cancelNoStockItem}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-rose-500 hover:text-rose-700 transition-colors"
+                  title="Cancel scan"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  placeholder="Scan Barcode or Type Product Code..."
+                  autoFocus
+                  value={barcodeInput}
+                  onChange={(e) => setBarcodeInput(e.target.value)}
+                  onKeyDown={handleBarcodeScan}
+                  disabled={isScanningItem}
+                  className={`w-full px-4 py-1 bg-slate-50 dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[13px] font-[1000] text-black dark:text-white focus:outline-none focus:border-indigo-600 dark:focus:border-indigo-500 transition-all shadow-inner placeholder:text-slate-300 min-h-[32px] ${isScanningItem ? 'opacity-50' : ''}`}
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest hidden lg:block">Enter to Bind</span>
+                  <button className="p-0.5 text-slate-400 hover:text-indigo-600 transition-colors">
+                    <Search className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Row 2: Scanning Command Bar - EVEN SLIMMER */}
-        <div className="bg-white dark:bg-white/[0.03] border-2 border-indigo-100 dark:border-white/[0.08] rounded-2xl p-2 flex items-center gap-4 shadow-lg shadow-indigo-500/5">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl border border-indigo-100 dark:border-indigo-500/20">
-              <span className="text-[11px] font-[1000] text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                <div className="w-4 h-4 flex items-center justify-center bg-indigo-600 text-white rounded-lg text-[9px]">1</div>
-                Scancode
-              </span>
+        <div className="flex items-center gap-3 px-4 border-l border-slate-150 dark:border-white/10">
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-end">
+              <span className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Qty</span>
+              <span className="text-[14px] font-[1000] text-slate-900 dark:text-white leading-none">{totalQty.toFixed(2)}</span>
             </div>
-            <div className="flex-1 relative group">
-              {pendingNoStockItem ? (
-                <div className="relative flex items-center w-full">
-                  <span className="absolute left-3 text-[12px] font-black text-emerald-600 dark:text-emerald-400 select-none uppercase tracking-wider">Set Sel Price: ₹</span>
-                  <input
-                    type="number"
-                    autoFocus
-                    placeholder="0.00"
-                    value={noStockSelPrice}
-                    onChange={(e) => setNoStockSelPrice(e.target.value)}
-                    onKeyDown={handleNoStockPriceSubmit}
-                    className="w-full pl-32 pr-10 py-2 bg-emerald-50/50 dark:bg-emerald-950/20 border-2 border-emerald-500 rounded-xl text-[14px] font-[1000] text-black dark:text-white focus:outline-none transition-all shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <button
-                    onClick={cancelNoStockItem}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-rose-500 hover:text-rose-700 transition-colors"
-                    title="Cancel scan"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    placeholder="Scan Barcode or Type Product Code..."
-                    autoFocus
-                    value={barcodeInput}
-                    onChange={(e) => setBarcodeInput(e.target.value)}
-                    onKeyDown={handleBarcodeScan}
-                    disabled={isScanningItem}
-                    className={`w-full px-5 py-2 bg-slate-50 dark:bg-white/[0.05] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[14px] font-[1000] text-black dark:text-white focus:outline-none focus:border-indigo-600 dark:focus:border-indigo-500 transition-all shadow-inner placeholder:text-slate-300 ${isScanningItem ? 'opacity-50' : ''}`}
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest hidden lg:block">Enter to Bind</span>
-                    <button className="p-1 text-slate-400 hover:text-indigo-600 transition-colors">
-                      <Search className="w-4 h-4" />
-                    </button>
-                  </div>
-                </>
-              )}
+            <div className="w-[1px] h-5 bg-slate-100 dark:bg-white/10"></div>
+            <div className="flex flex-col items-end">
+              <span className="text-[7.5px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Amount</span>
+              <span className="text-[14px] font-[1000] text-indigo-600 dark:text-indigo-400 leading-none">₹{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
-
-          <div className="flex items-center gap-4 px-6 border-l-2 border-slate-100 dark:border-white/10">
-            <div className="flex items-center gap-6">
-              <div className="flex flex-col items-end">
-                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Qty</span>
-                <span className="text-[16px] font-[1000] text-slate-900 dark:text-white leading-none">{totalQty.toFixed(2)}</span>
-              </div>
-              <div className="w-[1px] h-6 bg-slate-100 dark:bg-white/10"></div>
-              <div className="flex flex-col items-end">
-                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Amount</span>
-                <span className="text-[16px] font-[1000] text-indigo-600 dark:text-indigo-400 leading-none">{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-            </div>
-          </div>
+          <div className="w-[1px] h-5 bg-slate-100 dark:bg-white/10"></div>
+          <button
+            type="button"
+            onClick={() => setIsTableMaximized(true)}
+            className="p-1.5 bg-slate-50 dark:bg-white/[0.05] hover:bg-indigo-50 dark:hover:bg-indigo-500/10 border border-slate-200 dark:border-white/[0.08] rounded-xl text-slate-600 dark:text-white/60 hover:text-indigo-600 dark:hover:text-white transition-all active:scale-95 flex items-center justify-center"
+            title="Maximize Scan Mode"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
@@ -683,7 +836,16 @@ const SalesEntry: React.FC = () => {
           <table className="w-full min-w-[1800px] border-collapse text-left border-spacing-0">
             <thead className="sticky top-0 z-10 shadow-[0_8px_30px_rgb(79,70,229,0.15)]">
               <tr className="border-b-0">
-                <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-16 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">#</th>
+                <th className="px-6 py-4 w-16 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setIsTableMaximized(true)}
+                    className="p-1 hover:bg-white/10 rounded-lg text-indigo-200 hover:text-white transition-all mx-auto flex items-center justify-center"
+                    title="Maximize Screen"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
+                </th>
                 {formMode !== 'VIEW' && formMode !== 'LOCKED' && (
                   <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest w-24 text-center bg-indigo-800 dark:bg-indigo-950 border-r border-indigo-500/30">Actions</th>
                 )}
@@ -698,7 +860,8 @@ const SalesEntry: React.FC = () => {
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">MRP</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Sel Price</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-24 text-right pr-[33px] bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc %</th>
-                <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc.</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc Amt</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Per Disc</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-200 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Rate</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-32 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">HSN</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-40 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Desc</th>
@@ -746,6 +909,11 @@ const SalesEntry: React.FC = () => {
                           onFocus={(e) => e.target.select()}
                           disabled={item.isIndividual}
                           onChange={(e) => handleUpdateQty(item.id, Number(e.target.value))}
+                          onKeyDown={(e) => {
+                            if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                              e.preventDefault();
+                            }
+                          }}
                           onBlur={(e) => {
                             const val = Number(e.target.value);
                             if (isNaN(val) || val <= 0) {
@@ -773,6 +941,11 @@ const SalesEntry: React.FC = () => {
                             value={item.selPrice}
                             onFocus={(e) => e.target.select()}
                             onChange={(e) => handleUpdateItemSelPrice(item.id, Number(e.target.value))}
+                            onKeyDown={(e) => {
+                              if (['e', 'E', '+', '-'].includes(e.key)) {
+                                e.preventDefault();
+                              }
+                            }}
                             className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-amber-700 dark:text-amber-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             min="0"
                             step="0.01"
@@ -788,52 +961,67 @@ const SalesEntry: React.FC = () => {
                   <td className="px-6 py-4 text-right whitespace-nowrap">
                     {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
                       <div className="flex items-center justify-end w-full">
-                        <div className="inline-flex items-center justify-between border border-slate-200 dark:border-white/[0.1] rounded-lg bg-slate-50 dark:bg-white/[0.02] px-2 py-1 w-[80px] focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all">
+                        <div className="inline-flex items-center justify-between border border-slate-200 dark:border-white/[0.1] rounded-lg bg-slate-50 dark:bg-white/[0.02] px-2 py-1 w-[90px] focus-within:ring-2 focus-within:ring-rose-500/20 focus-within:border-rose-500 transition-all">
                           <input
                             type="number"
-                            value={item.selPrice > 0 ? (Math.round(((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) / item.selPrice) * 100 * 100) / 100) : 0}
+                            value={item.rowDiscountPercent !== undefined ? Math.round(item.rowDiscountPercent * 100) / 100 : ''}
                             onFocus={(e) => e.target.select()}
-                            onChange={(e) => handleUpdateItemDiscountPercent(item.id, Number(e.target.value))}
-                            className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-slate-800 dark:text-slate-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
+                            onChange={(e) => handleUpdateItemDiscountPercent(item.id, parseFloat(e.target.value) || 0)}
+                            onKeyDown={(e) => {
+                              if (['e', 'E', '+', '-'].includes(e.key)) {
+                                e.preventDefault();
+                              }
+                            }}
+                            className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-rose-600 dark:text-rose-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
                             min="0"
                             max="100"
-                            step="0.1"
+                            step="0.01"
                             placeholder="0"
                           />
-                          <span className="text-[13px] font-bold text-slate-400 dark:text-slate-500 ml-1 select-none">%</span>
+                          <span className="text-[13px] font-bold text-rose-500 ml-1 select-none">%</span>
                         </div>
                       </div>
                     ) : (
                       <span className="inline-block text-[13px] font-bold text-slate-750 dark:text-slate-200 pr-[9px]">
-                        {item.selPrice > 0 ? (((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) / item.selPrice) * 100).toFixed(2) : '0.00'}%
+                        {item.rowDiscountPercent !== undefined ? item.rowDiscountPercent.toFixed(2) : '0.00'}%
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-right whitespace-nowrap bg-rose-50/10 dark:bg-rose-500/[0.02] border-r border-slate-100 dark:border-white/5">
+                    {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                      <div className="flex items-center justify-end w-full">
+                        <div className="inline-flex items-center justify-between border border-slate-200 dark:border-white/[0.1] rounded-lg bg-slate-50 dark:bg-white/[0.02] px-2 py-1 w-[110px] focus-within:ring-2 focus-within:ring-rose-500/20 focus-within:border-rose-500 transition-all">
+                          <span className="text-[13px] font-bold text-rose-500 mr-1 select-none">₹</span>
+                          <input
+                            type="number"
+                            value={item.rowDiscount !== undefined ? Math.round((item.rowDiscount * item.qty) * 100) / 100 : 0}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleUpdateItemDiscount(item.id, (parseFloat(e.target.value) || 0) / item.qty)}
+                            onKeyDown={(e) => {
+                              if (['e', 'E', '+', '-'].includes(e.key)) {
+                                e.preventDefault();
+                              }
+                            }}
+                            className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-rose-600 dark:text-rose-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
+                            min="0"
+                            max={item.selPrice * item.qty}
+                            step="0.01"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="inline-block text-[14px] font-[1000] text-rose-700 dark:text-rose-400 pr-[9px]">
+                        -₹{((item.rowDiscount || 0) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-right whitespace-nowrap">
-                    {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
-                      <div className="flex items-center justify-end w-full">
-                        <div className="inline-flex items-center justify-between border border-slate-200 dark:border-white/[0.1] rounded-lg bg-slate-50 dark:bg-white/[0.02] px-2 py-1 w-[95px] focus-within:ring-2 focus-within:ring-rose-500/20 focus-within:border-rose-500 transition-all">
-                          <input
-                            type="number"
-                            value={item.rowDiscount !== undefined ? item.rowDiscount : item.discount}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => handleUpdateItemDiscount(item.id, parseFloat(e.target.value) || 0)}
-                            className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[13px] text-rose-600 dark:text-rose-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
-                            min="0"
-                            max={item.selPrice}
-                            step="0.01"
-                            placeholder="0"
-                          />
-                          <span className="text-[13px] font-bold text-rose-500 ml-1 select-none">₹</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="inline-block text-[14px] font-[1000] text-rose-700 pr-[9px]">
-                        -₹{(item.rowDiscount !== undefined ? item.rowDiscount : item.discount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    )}
+                    <span className="inline-block text-[14px] font-[1000] text-rose-700 dark:text-rose-400 pr-[9px]">
+                      -₹{item.discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
                   </td>
-                  <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{(item.selPrice - (item.rowDiscount !== undefined ? item.rowDiscount : item.discount)).toLocaleString()}</td>
+                  <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{(item.selPrice - item.discount).toLocaleString()}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.hsn}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.taxDesc}</td>
                   <td className="px-6 py-5 text-[13px] font-[900] text-slate-600 text-right whitespace-nowrap">₹{item.taxAmt.toLocaleString()}</td>
@@ -851,42 +1039,43 @@ const SalesEntry: React.FC = () => {
   return (
     <div className="flex flex-col h-full w-full max-w-full mx-auto overflow-hidden bg-transparent">
       {/* Shared Root Header Bar */}
-      <div className="bg-white dark:bg-[#0d0d0d] border-b border-slate-200 dark:border-white/[0.08] px-6 py-3 flex items-center justify-between shrink-0 z-20">
-        <div className="flex items-center gap-3 animate-fade-in">
-          <span className="text-[12.5px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest leading-none">
+      <div className="bg-white dark:bg-[#0d0d0d] border-b border-slate-200 dark:border-white/[0.08] px-4 py-1.5 flex items-center justify-between shrink-0 z-20">
+        <div className="flex items-center gap-2 animate-fade-in">
+          <span className="text-[11px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest leading-none">
             {viewMode === 'classic' ? 'Classic Register' : 'Modern POS'}
           </span>
           <StatusBadge />
 
-          <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 mx-2"></div>
+          <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10 mx-1.5"></div>
 
           {/* Doc No */}
-          <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-50 dark:bg-white/[0.05] rounded-lg border border-slate-100 dark:border-white/[0.08]">
-            <FileText className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" />
-            <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 tracking-tight">#{docNo}</span>
-          </div>
+          <InfoBadge icon={<FileText className="w-4 h-4 text-white" />} value={`#${docNo}`} />
 
-          {/* Date Picker Button */}
           <div className="relative">
-            <button
-              type="button"
-              onClick={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && setShowDatePicker(prev => !prev)}
-              disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
-              className={`flex items-center gap-2 px-3 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 rounded-xl border border-indigo-100 dark:border-indigo-500/20 text-[11px] font-extrabold text-indigo-600 dark:text-indigo-400 tracking-tight shadow-sm ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all'}`}
-            >
-              <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-              <span>{docDate ? new Date(docDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Select Date'}</span>
-            </button>
+            {formMode === 'VIEW' || formMode === 'LOCKED' ? (
+              <InfoBadge
+                icon={<Calendar className="w-4 h-4 text-white" />}
+                value={docDate ? new Date(docDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Select Date'}
+                className="opacity-70 cursor-not-allowed"
+              />
+            ) : (
+              <InfoBadge
+                icon={<Calendar className="w-4 h-4 text-white" />}
+                value={docDate ? new Date(docDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Select Date'}
+                onClick={() => setShowDatePicker(prev => !prev)}
+              />
+            )}
             <AnimatePresence>
               {showDatePicker && (
                 <CustomDatePickerPopover onClose={() => setShowDatePicker(false)} alignClass="absolute top-full left-0 mt-2" />
               )}
             </AnimatePresence>
           </div>
+
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2.5">
           <HeaderActions />
-          <div className="h-6 w-[1px] bg-slate-200 dark:bg-white/10 mx-1"></div>
+          <div className="h-5 w-[1px] bg-slate-200 dark:bg-white/10 mx-0.5"></div>
           <LayoutToggle />
         </div>
       </div>
@@ -908,14 +1097,18 @@ const SalesEntry: React.FC = () => {
                         <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
                           <Search className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" /> Mobile
                         </label>
-                        <div className="relative">
+                        <div className="relative" onBlur={(e) => {
+                          if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
+                            return;
+                          }
+                          setShowResults(false);
+                        }}>
                           <input
                             type="text"
                             value={mobileNumber}
                             onChange={(e) => handleMobileChange(e.target.value)}
                             readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
-                            onFocus={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && searchResults.length > 0 && setShowResults(true)}
-                            onBlur={() => setTimeout(() => setShowResults(false), 200)}
+                            onFocus={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && setShowResults(true)}
                             placeholder="Search..."
                             className={`w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-[13px] font-[1000] rounded-xl px-4 py-1.5 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-100 dark:bg-white/[0.01]' : ''}`}
                           />
@@ -927,7 +1120,7 @@ const SalesEntry: React.FC = () => {
 
                           {/* Search Results Dropdown */}
                           <AnimatePresence>
-                            {showResults && (
+                            {showResults && mobileNumber.trim().length >= 3 && (
                               <motion.div
                                 initial={{ opacity: 0, y: -10 }}
                                 animate={{ opacity: 1, y: 0 }}
@@ -950,13 +1143,48 @@ const SalesEntry: React.FC = () => {
                                     </div>
                                   </button>
                                 ))}
+                                <div className="p-3 bg-slate-50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.05]">
+                                  <span className="text-[11px] font-[1000] text-indigo-650 dark:text-indigo-400 block mb-1.5 uppercase tracking-wider">New Customer Info</span>
+                                  <div className="flex gap-2">
+                                    <input
+                                      type="text"
+                                      placeholder="Enter Customer Name..."
+                                      value={newCustomerNameInput}
+                                      onChange={(e) => setNewCustomerNameInput(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          if (newCustomerNameInput.trim()) {
+                                            setCustomerName(newCustomerNameInput.trim());
+                                            setShowResults(false);
+                                            setNewCustomerNameInput('');
+                                          }
+                                        }
+                                      }}
+                                      className="flex-1 px-3 py-1.5 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[12px] font-bold text-black dark:text-white outline-none focus:border-indigo-500"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (newCustomerNameInput.trim()) {
+                                          setCustomerName(newCustomerNameInput.trim());
+                                          setShowResults(false);
+                                          setNewCustomerNameInput('');
+                                        }
+                                      }}
+                                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[12px] font-[1000] transition-all flex items-center gap-1 shrink-0"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" /> Map Name
+                                    </button>
+                                  </div>
+                                </div>
                               </motion.div>
                             )}
                           </AnimatePresence>
                         </div>
                       </div>
 
-                      <div className="space-y-1 col-span-1 md:col-span-4 relative">
+                      <div className="space-y-1 col-span-1 md:col-span-3 relative">
                         <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
                           <UserCheck className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" /> Salesman
                         </label>
@@ -1027,19 +1255,44 @@ const SalesEntry: React.FC = () => {
                       </div>
 
 
-                      <div className="space-y-1 col-span-1 md:col-span-5">
+                      <div className="space-y-1 col-span-1 md:col-span-3">
                         <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
                           <User className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" /> Customer Name
                         </label>
                         <div className="bg-emerald-50/50 dark:bg-emerald-500/5 border-2 border-emerald-200 dark:border-emerald-500/30 rounded-xl px-4 py-1.5 flex items-center justify-between shadow-sm min-h-[38px] w-full">
-                          <div className="flex items-center gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0 w-full">
                             <User className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                            <span className={`text-[13px] font-[1000] truncate ${customerName ? "text-emerald-950 dark:text-emerald-300" : "text-slate-400 dark:text-white/30"}`}>
-                              {customerName || 'Walk-in Customer'}
-                            </span>
+                            {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                              <input
+                                ref={customerNameInputRef}
+                                type="text"
+                                placeholder="Walk-in Customer"
+                                value={customerName}
+                                onChange={(e) => setCustomerName(e.target.value)}
+                                className="w-full bg-transparent border-0 p-0 text-[13px] font-[1000] focus:ring-0 focus:outline-none text-emerald-950 dark:text-emerald-300 placeholder-emerald-800/30 outline-none"
+                              />
+                            ) : (
+                              <span className={`text-[13px] font-[1000] truncate ${customerName ? "text-emerald-950 dark:text-emerald-300" : "text-slate-400 dark:text-white/30"}`}>
+                                {customerName || 'Walk-in Customer'}
+                              </span>
+                            )}
                           </div>
                           <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse flex-shrink-0"></div>
                         </div>
+                      </div>
+
+                      <div className="space-y-1 col-span-1 md:col-span-3">
+                        <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
+                          <FileText className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" /> Remarks
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Billing remarks..."
+                          value={remarks}
+                          onChange={(e) => setRemarks(e.target.value)}
+                          readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
+                          className={`w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-[13px] font-[1000] rounded-xl px-4 py-1.5 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner min-h-[38px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-100 dark:bg-white/[0.01]' : ''}`}
+                        />
                       </div>
                     </div>
                   </div>
@@ -1165,17 +1418,17 @@ const SalesEntry: React.FC = () => {
                                 <label className="text-[11px] font-black text-gray-500 dark:text-white/40 uppercase tracking-widest ml-1">Discount</label>
                                 <div className="grid grid-cols-2 gap-4">
                                   {/* Discount % */}
-                                  <div className="relative flex items-center bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.1] rounded-xl focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all shadow-inner h-[46px]">
+                                  <div className="relative flex items-center bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.1] rounded-xl focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-500/20 transition-all shadow-inner h-[46px]">
                                     <input
                                       type="number"
                                       min="0"
                                       max="100"
-                                      step="0.1"
-                                      placeholder="0"
-                                      value={lastScannedItem.selPrice > 0 ? (Math.round(((lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount) / lastScannedItem.selPrice) * 100 * 100) / 100) : 0}
+                                      step="0.01"
+                                      placeholder="0.00"
+                                      value={lastScannedItem.selPrice > 0 ? Math.round(((lastScannedItem.rowDiscount !== undefined ? lastScannedItem.rowDiscount : lastScannedItem.discount) / lastScannedItem.selPrice * 100) * 100) / 100 : ''}
                                       onFocus={(e) => e.target.select()}
                                       onChange={(e) => handleUpdateItemDiscountPercent(lastScannedItem.id, parseFloat(e.target.value) || 0)}
-                                      className="w-full h-full bg-transparent border-0 text-right pr-8 pl-3 p-0 font-bold text-[15px] text-slate-800 dark:text-slate-100 focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
+                                      className="w-full h-full bg-transparent border-0 text-right pr-8 pl-3 p-0 font-bold text-[15px] text-rose-600 dark:text-rose-400 focus:ring-0 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none placeholder-slate-350 dark:placeholder-white/20"
                                     />
                                     <span className="absolute right-3 text-[13px] font-bold text-slate-400 select-none">%</span>
                                   </div>
@@ -1513,7 +1766,7 @@ const SalesEntry: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[300] flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[10000] flex items-center justify-center p-4"
           >
             <motion.div
               initial={{ scale: 0.95, y: 20 }}
@@ -1655,6 +1908,294 @@ const SalesEntry: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Maximized Scan Mode Overlay */}
+      {createPortal(
+        <AnimatePresence>
+          {isTableMaximized && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[9999] bg-slate-950 dark:bg-black p-6 flex flex-col gap-4 text-white overflow-hidden"
+            >
+              {/* Header / Info bar */}
+              <div className="flex items-center justify-between shrink-0 bg-white/[0.04] border border-white/10 rounded-2xl p-4">
+                <div className="flex items-center gap-4">
+                  <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-black uppercase tracking-wider">Maximized Scan Mode</span>
+                  <span className="text-white/40 text-xs">Press <kbd className="px-1.5 py-0.5 bg-white/10 border border-white/20 rounded text-[10px] font-mono">ESC</kbd> to return to standard view</span>
+                </div>
+
+                <div className="flex items-center gap-6">
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest leading-none mb-1">Total Qty</span>
+                    <span className="text-xl font-black text-white leading-none">{totalQty.toFixed(2)}</span>
+                  </div>
+                  <div className="w-[1px] h-8 bg-white/10"></div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] font-black text-white/40 uppercase tracking-widest leading-none mb-1">Total Amount</span>
+                    <span className="text-xl font-black text-emerald-400 leading-none">₹{netPayable.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="w-[1px] h-8 bg-white/10"></div>
+                  <button
+                    type="button"
+                    onClick={() => setIsTableMaximized(false)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 hover:border-white/20 rounded-xl text-xs font-black text-white transition-all active:scale-95"
+                  >
+                    <Minimize2 className="w-4 h-4" /> Exit Fullscreen
+                  </button>
+                </div>
+              </div>
+
+              {/* Scan code Input Bar inside maximized view */}
+              <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-3 flex items-center gap-4 shrink-0">
+                <div className="flex items-center gap-2 px-3 py-2 bg-indigo-500/20 rounded-xl border border-indigo-500/30 text-indigo-300">
+                  <span className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
+                    <div className="w-4 h-4 flex items-center justify-center bg-indigo-500 text-white rounded-lg text-[9px]">1</div>
+                    Scancode
+                  </span>
+                </div>
+                <div className="flex-1 relative">
+                  {pendingNoStockItem ? (
+                    <div className="relative flex items-center w-full">
+                      <span className="absolute left-4 text-sm font-black text-emerald-400 select-none uppercase tracking-wider">Set Sel Price: ₹</span>
+                      <input
+                        type="number"
+                        autoFocus
+                        placeholder="0.00"
+                        value={noStockSelPrice}
+                        onChange={(e) => setNoStockSelPrice(e.target.value)}
+                        onKeyDown={handleNoStockPriceSubmit}
+                        className="w-full pl-36 pr-12 py-2.5 bg-emerald-950/40 border-2 border-emerald-500 rounded-xl text-[14px] font-black text-white focus:outline-none transition-all shadow-inner [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <button
+                        onClick={cancelNoStockItem}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-rose-400 hover:text-rose-300 transition-colors"
+                        title="Cancel scan"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        ref={(el) => {
+                          if (el && isTableMaximized) el.focus();
+                        }}
+                        placeholder="Scan Barcode or Type Product Code..."
+                        value={barcodeInput}
+                        onChange={(e) => setBarcodeInput(e.target.value)}
+                        onKeyDown={handleBarcodeScan}
+                        disabled={isScanningItem}
+                        className={`w-full px-5 py-2.5 bg-white/5 border-2 border-white/10 rounded-xl text-[14px] font-black text-white focus:outline-none focus:border-indigo-500 transition-all shadow-inner placeholder:text-white/20 ${isScanningItem ? 'opacity-50' : ''}`}
+                      />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 text-white/30">
+                        <span className="text-[10px] font-black uppercase tracking-widest hidden lg:block">Enter to Bind</span>
+                        <Search className="w-4 h-4" />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="flex-1 bg-white/[0.02] border border-white/10 rounded-2xl overflow-hidden flex flex-col min-h-0">
+                <div className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar min-h-0 bg-transparent">
+                  <table className="w-full min-w-[1800px] border-collapse text-left border-spacing-0">
+                    <thead className="sticky top-0 z-10 bg-slate-950 shadow-[0_8px_30px_rgba(0,0,0,0.5)]">
+                      <tr className="border-b border-white/10">
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-300 uppercase tracking-widest w-16 border-r border-white/10">#</th>
+                        {formMode !== 'VIEW' && formMode !== 'LOCKED' && (
+                          <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest w-24 text-center border-r border-white/10 bg-slate-900/50">Actions</th>
+                        )}
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest w-48 border-r border-white/10">Barcode</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-40 border-r border-white/10">Source Code</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest flex-1 border-r border-white/10 bg-slate-900/20">Product Description</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-40 border-r border-white/10">Category</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-32 border-r border-white/10">Color</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-24 border-r border-white/10">Size</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-24 text-center border-r border-white/10">Indiv</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-24 text-center border-r border-white/10">Qty</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-36 text-right border-r border-white/10">MRP</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Sel Price</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-24 text-right pr-[33px] border-r border-white/10">Disc %</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Disc Amt</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Per Disc</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-200 uppercase tracking-widest w-36 text-right border-r border-white/10">Rate</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-32 border-r border-white/10">HSN</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-40 border-r border-white/10">Tax Desc</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-36 text-right border-r border-white/10">Tax Amt</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest w-40 text-right">Net Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 bg-transparent">
+                      {items.map((item, index) => (
+                        <tr key={item.id} className="hover:bg-white/5 transition-colors group">
+                          <td className="px-6 py-4 text-[12px] font-black text-white/30 border-r border-white/5">{index + 1}</td>
+                          {formMode !== 'VIEW' && formMode !== 'LOCKED' && (
+                            <td className="px-6 py-4 text-center border-r border-white/5">
+                              <button
+                                onClick={() => handleRemoveItem(item.id)}
+                                className="p-2 bg-rose-500/10 text-rose-400 hover:text-white hover:bg-rose-600 rounded-xl transition-all shadow-sm mx-auto flex items-center justify-center"
+                                title="Delete Item"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          )}
+                          <td className="px-6 py-4 text-[13px] font-black text-white/90 border-r border-white/5">{item.barcode}</td>
+                          <td className="px-6 py-4 text-[12px] font-bold text-white/50 border-r border-white/5">{item.sourceCode}</td>
+                          <td className="px-6 py-4 text-[14px] font-black text-indigo-300 border-r border-white/5">{item.productCode}</td>
+                          <td className="px-6 py-4 text-[12px] font-bold text-white/70 border-r border-white/5 uppercase">{item.category}</td>
+                          <td className="px-6 py-4 text-[12px] font-bold text-white/70 border-r border-white/5">{item.color}</td>
+                          <td className="px-6 py-4 text-[12px] font-bold text-white/70 border-r border-white/5">{item.size}</td>
+                          <td className="px-6 py-4 text-center border-r border-white/5">
+                            <div className="flex justify-center">
+                              <div className={`w-8 h-4 rounded-full p-0.5 transition-all duration-300 flex items-center ${item.isIndividual ? 'bg-indigo-500' : 'bg-white/10'} cursor-not-allowed`}>
+                                <div className={`w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-all duration-300 transform ${item.isIndividual ? 'translate-x-3.5' : 'translate-x-0'}`} />
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-center border-r border-white/5">
+                            <div className="flex justify-center">
+                              {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                                <input
+                                  type="number"
+                                  value={item.qty}
+                                  onFocus={(e) => e.target.select()}
+                                  disabled={item.isIndividual}
+                                  onChange={(e) => handleUpdateQty(item.id, Number(e.target.value))}
+                                  onKeyDown={(e) => {
+                                    if (['e', 'E', '+', '-', '.'].includes(e.key)) {
+                                      e.preventDefault();
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    const val = Number(e.target.value);
+                                    if (isNaN(val) || val <= 0) {
+                                      handleUpdateQty(item.id, 1);
+                                    }
+                                  }}
+                                  className={`w-20 px-2 py-0.5 bg-white/5 border ${item.isIndividual ? 'border-white/5 opacity-50 cursor-not-allowed' : 'border-white/25 focus:border-indigo-500'} rounded-lg text-[13px] font-black text-center text-white focus:outline-none`}
+                                  min="1"
+                                />
+                              ) : (
+                                <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-lg text-[13px] font-black">
+                                  {item.qty}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-[13px] font-bold text-white/60 text-right border-r border-white/5">₹{item.mrp.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right border-r border-white/5">
+                            {item.isNoStockChecking && formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                              <div className="flex items-center justify-end w-full">
+                                <div className="inline-flex items-center justify-between border border-amber-500/30 rounded-lg bg-amber-500/10 px-2 py-0.5 w-[100px] focus-within:ring-2 focus-within:ring-amber-500/20 focus-within:border-amber-500 transition-all">
+                                  <span className="text-[12px] font-bold text-amber-400 mr-1 select-none">₹</span>
+                                  <input
+                                    type="number"
+                                    value={item.selPrice}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => handleUpdateItemSelPrice(item.id, Number(e.target.value))}
+                                    onKeyDown={(e) => {
+                                      if (['e', 'E', '+', '-'].includes(e.key)) {
+                                        e.preventDefault();
+                                      }
+                                    }}
+                                    className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[12px] text-amber-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="0"
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-[14px] font-black text-emerald-400">₹{item.selPrice.toLocaleString()}</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right border-r border-white/5">
+                            {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                              <div className="flex items-center justify-end w-full">
+                                <div className="inline-flex items-center justify-between border border-white/10 rounded-lg bg-white/5 px-2 py-0.5 w-[90px] focus-within:ring-2 focus-within:ring-rose-500/20 focus-within:border-rose-500 transition-all">
+                                  <input
+                                    type="number"
+                                    value={item.rowDiscountPercent !== undefined ? Math.round(item.rowDiscountPercent * 100) / 100 : ''}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => handleUpdateItemDiscountPercent(item.id, parseFloat(e.target.value) || 0)}
+                                    onKeyDown={(e) => {
+                                      if (['e', 'E', '+', '-'].includes(e.key)) {
+                                        e.preventDefault();
+                                      }
+                                    }}
+                                    className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[12px] text-rose-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    min="0"
+                                    max="100"
+                                    step="0.01"
+                                    placeholder="0"
+                                  />
+                                  <span className="text-[12px] font-bold text-rose-400 ml-1 select-none">%</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="inline-block text-[12px] font-bold text-white/80 pr-[9px]">
+                                {item.rowDiscountPercent !== undefined ? item.rowDiscountPercent.toFixed(2) : '0.00'}%
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right border-r border-white/5 bg-rose-500/[0.02]">
+                            {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+                              <div className="flex items-center justify-end w-full">
+                                <div className="inline-flex items-center justify-between border border-white/10 rounded-lg bg-white/5 px-2 py-0.5 w-[110px] focus-within:ring-2 focus-within:ring-rose-500/20 focus-within:border-rose-500 transition-all">
+                                  <span className="text-[12px] font-bold text-rose-400 mr-1 select-none">₹</span>
+                                  <input
+                                    type="number"
+                                    value={item.rowDiscount !== undefined ? Math.round((item.rowDiscount * item.qty) * 100) / 100 : 0}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => handleUpdateItemDiscount(item.id, (parseFloat(e.target.value) || 0) / item.qty)}
+                                    onKeyDown={(e) => {
+                                      if (['e', 'E', '+', '-'].includes(e.key)) {
+                                        e.preventDefault();
+                                      }
+                                    }}
+                                    className="w-full text-right bg-transparent border-0 p-0 focus:ring-0 focus:outline-none font-bold text-[12px] text-rose-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    min="0"
+                                    max={item.selPrice * item.qty}
+                                    step="0.01"
+                                    placeholder="0"
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="inline-block text-[13px] font-black text-rose-400 pr-[9px]">
+                                -₹{((item.rowDiscount || 0) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right border-r border-white/5">
+                            <span className="inline-block text-[13px] font-black text-rose-400 pr-[9px]">
+                              -₹{item.discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-[13px] font-black text-emerald-400 text-right border-r border-white/5">₹{(item.selPrice - item.discount).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-[12px] font-bold text-white/50 border-r border-white/5">{item.hsn}</td>
+                          <td className="px-6 py-4 text-[12px] font-bold text-white/50 border-r border-white/5">{item.taxDesc}</td>
+                          <td className="px-6 py-4 text-[12px] font-bold text-white/60 text-right border-r border-white/5">₹{item.taxAmt.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-[16px] font-black text-indigo-300 text-right bg-white/[0.02]">₹{(item.amount + (item.taxAmt || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Popup Notification inside maximized view */}
+              <SalesPopupNotification popup={popup} setPopup={setPopup} />
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Store,
@@ -9,9 +9,7 @@ import {
   ChevronDown,
   CircleDot,
   Star,
-  Compass,
-  ChevronLeft,
-  ChevronRight
+  Compass
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ThemeToggle from '../ThemeToggle';
@@ -155,20 +153,29 @@ const SidebarGroup = ({ icon, label, isActive, isOpenInitially, isExpanded, forc
 const AppLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(() => {
-    const saved = localStorage.getItem('rsoft_sidebar_expanded');
-    return saved === 'true';
-  });
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [companyName, setCompanyName] = useState('RSOFT Enterprise');
+  const sidebarRef = useRef<HTMLElement>(null);
 
-  const toggleSidebar = () => {
-    setIsSidebarExpanded(prev => {
-      const next = !prev;
-      localStorage.setItem('rsoft_sidebar_expanded', String(next));
-      return next;
-    });
-  };
+  const expandSidebar = useCallback(() => {
+    setIsSidebarExpanded(true);
+  }, []);
+
+  const collapseSidebar = useCallback(() => {
+    setIsSidebarExpanded(false);
+  }, []);
+
+  // Click outside sidebar → collapse
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
+        collapseSidebar();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [collapseSidebar]);
 
   // Sidebar Pin states
   const [pinnedRoutes, setPinnedRoutes] = useState<string[]>([]);
@@ -263,6 +270,7 @@ const AppLayout: React.FC = () => {
 
       {/* Interactive Toggle Sidebar */}
       <motion.aside
+        ref={sidebarRef}
         initial={false}
         animate={{ width: isSidebarExpanded ? 240 : 72 }}
         transition={{ type: "spring", bounce: 0, duration: 0.4 }}
@@ -294,7 +302,7 @@ const AppLayout: React.FC = () => {
             label="Dashboard"
             isActive={isActivePath('/dashboard')}
             isExpanded={isSidebarExpanded}
-            onClick={() => navigate('/dashboard')}
+            onClick={() => { expandSidebar(); navigate('/dashboard'); }}
           />
 
           <SidebarItem
@@ -302,7 +310,7 @@ const AppLayout: React.FC = () => {
             label="Launchpad"
             isActive={isActivePath('/launchpad')}
             isExpanded={isSidebarExpanded}
-            onClick={() => navigate('/launchpad')}
+            onClick={() => { expandSidebar(); navigate('/launchpad'); }}
           />
 
           {/* Pinned Favorites Group */}
@@ -313,7 +321,7 @@ const AppLayout: React.FC = () => {
               isActive={pinnedItems.some(item => isActivePath(item.path))}
               isOpenInitially={true}
               isExpanded={isSidebarExpanded}
-              onExpand={toggleSidebar}
+              onExpand={expandSidebar}
             >
               {pinnedItems.map(item => {
                 const ItemIcon = item.icon;
@@ -342,7 +350,7 @@ const AppLayout: React.FC = () => {
                 isActive={group.items.some(item => isActivePath(item.path))}
                 isOpenInitially={group.items.some(item => isActivePath(item.path))}
                 isExpanded={isSidebarExpanded}
-                onExpand={toggleSidebar}
+                onExpand={expandSidebar}
               >
                 {group.items.map(item => {
                   const ItemIcon = item.icon;
@@ -364,12 +372,6 @@ const AppLayout: React.FC = () => {
 
         {/* Bottom User Area */}
         <div className={`p-3.5 border-t border-slate-100 dark:border-white/[0.08] mt-auto flex flex-col gap-1.5 ${!isSidebarExpanded && 'items-center'}`}>
-          <SidebarItem
-            icon={isSidebarExpanded ? <ChevronLeft className="w-[22px] h-[22px] stroke-[2.5px]" /> : <ChevronRight className="w-[22px] h-[22px] stroke-[2.5px]" />}
-            label={isSidebarExpanded ? "Collapse Menu" : "Expand Menu"}
-            isExpanded={isSidebarExpanded}
-            onClick={toggleSidebar}
-          />
           <SidebarItem icon={<LogOut className="w-[22px] h-[22px] stroke-[2.5px]" />} label="Sign Out" isExpanded={isSidebarExpanded} onClick={handleLogout} />
         </div>
       </motion.aside>
