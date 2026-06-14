@@ -861,8 +861,8 @@ const SalesEntry: React.FC = () => {
                 <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Sel Price</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-24 text-right pr-[33px] bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc %</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc Amt</th>
-                <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Per Disc</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-200 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Rate</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Per Disc</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-32 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">HSN</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-40 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Desc</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Amt</th>
@@ -1012,20 +1012,20 @@ const SalesEntry: React.FC = () => {
                       </div>
                     ) : (
                       <span className="inline-block text-[14px] font-[1000] text-rose-700 dark:text-rose-400 pr-[9px]">
-                        -₹{((item.rowDiscount || 0) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₹{((item.rowDiscount || 0) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     )}
                   </td>
+                  <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{(item.selPrice - (item.rowDiscount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="px-6 py-4 text-right whitespace-nowrap">
                     <span className="inline-block text-[14px] font-[1000] text-rose-700 dark:text-rose-400 pr-[9px]">
-                      -₹{item.discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₹{(item.discount - (item.rowDiscount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </td>
-                  <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{(item.selPrice - item.discount).toLocaleString()}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.hsn}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.taxDesc}</td>
                   <td className="px-6 py-5 text-[13px] font-[900] text-slate-600 text-right whitespace-nowrap">₹{item.taxAmt.toLocaleString()}</td>
-                  <td className="px-6 py-5 text-[19px] font-[1000] text-indigo-950 dark:text-indigo-200 text-right whitespace-nowrap bg-indigo-100/40 dark:bg-indigo-500/10 border-l border-indigo-200/50">₹{(item.amount + (item.taxAmt || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-5 text-[19px] font-[1000] text-indigo-950 dark:text-indigo-200 text-right whitespace-nowrap bg-indigo-100/40 dark:bg-indigo-500/10 border-l border-indigo-200/50">₹{((item.selPrice - (item.rowDiscount || 0)) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
               ))}
 
@@ -2021,8 +2021,8 @@ const SalesEntry: React.FC = () => {
                         <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Sel Price</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-24 text-right pr-[33px] border-r border-white/10">Disc %</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Disc Amt</th>
-                        <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Per Disc</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-200 uppercase tracking-widest w-36 text-right border-r border-white/10">Rate</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Per Disc</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-32 border-r border-white/10">HSN</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-40 border-r border-white/10">Tax Desc</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-36 text-right border-r border-white/10">Tax Amt</th>
@@ -2168,20 +2168,20 @@ const SalesEntry: React.FC = () => {
                               </div>
                             ) : (
                               <span className="inline-block text-[13px] font-black text-rose-400 pr-[9px]">
-                                -₹{((item.rowDiscount || 0) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                ₹{((item.rowDiscount || 0) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
                             )}
                           </td>
+                          <td className="px-6 py-4 text-[13px] font-black text-emerald-400 text-right border-r border-white/5">₹{(item.selPrice - (item.rowDiscount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="px-6 py-4 text-right border-r border-white/5">
                             <span className="inline-block text-[13px] font-black text-rose-400 pr-[9px]">
-                              -₹{item.discount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              ₹{(item.discount - (item.rowDiscount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-[13px] font-black text-emerald-400 text-right border-r border-white/5">₹{(item.selPrice - item.discount).toLocaleString()}</td>
                           <td className="px-6 py-4 text-[12px] font-bold text-white/50 border-r border-white/5">{item.hsn}</td>
                           <td className="px-6 py-4 text-[12px] font-bold text-white/50 border-r border-white/5">{item.taxDesc}</td>
                           <td className="px-6 py-4 text-[12px] font-bold text-white/60 text-right border-r border-white/5">₹{item.taxAmt.toLocaleString()}</td>
-                          <td className="px-6 py-4 text-[16px] font-black text-indigo-300 text-right bg-white/[0.02]">₹{(item.amount + (item.taxAmt || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="px-6 py-4 text-[16px] font-black text-indigo-300 text-right bg-white/[0.02]">₹{((item.selPrice - (item.rowDiscount || 0)) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                       ))}
                     </tbody>

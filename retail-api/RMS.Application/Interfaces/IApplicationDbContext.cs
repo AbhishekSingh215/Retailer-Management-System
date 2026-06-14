@@ -24,6 +24,8 @@ public interface IApplicationDbContext
     DbSet<City> Cities { get; set; }
     DbSet<State> States { get; set; }
     DbSet<Country> Countries { get; set; }
+    DbSet<Receipt> Receipts { get; set; }
+    DbSet<PaymentSubType> PaymentSubTypes { get; set; }
     long GetMaxPknolocation(string TableName, string Location, string ColumnName, string LocationColumn, string maxPknocolumn);
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

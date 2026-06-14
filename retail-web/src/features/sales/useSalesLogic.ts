@@ -176,7 +176,7 @@ export const useSalesLogic = () => {
 
   // Dynamic Calculations for Totals & Footer
   const totalQty = distributedItems.reduce((sum, item) => sum + item.qty, 0);
-  const grossAmount = items.reduce((sum, item) => sum + item.amount + (item.taxAmt || 0), 0);
+  const grossAmount = items.reduce((sum, item) => sum + (item.selPrice * item.qty), 0);
   const totalDiscount = items.reduce((sum, item) => sum + ((item.rowDiscount !== undefined ? item.rowDiscount : item.discount) * item.qty), 0);
   const totalTaxAmt = distributedItems.reduce((sum, item) => sum + (item.taxAmt || 0), 0);
   const rawNetPayable = distributedItems.reduce((sum, item) => sum + item.amount, 0) + totalTaxAmt;
@@ -489,7 +489,7 @@ export const useSalesLogic = () => {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE_URL}/sales`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
@@ -747,22 +747,22 @@ export const useSalesLogic = () => {
     const itemsNeedingLookup = items.filter(item => {
       const rowDiscountPerUnit = item.rowDiscount !== undefined ? item.rowDiscount : item.discount;
       const rateAfterRowDiscount = item.selPrice - rowDiscountPerUnit;
-      
+
       const totalAmountAfterRowDiscount = items.reduce((sum, i) => {
         const rDisc = i.rowDiscount !== undefined ? i.rowDiscount : i.discount;
         return sum + (i.selPrice - rDisc) * i.qty;
       }, 0);
-      
+
       let effectiveGlobalPct = 0;
       if (globalDiscountPercent > 0) {
         effectiveGlobalPct = globalDiscountPercent;
       } else if (globalDiscountAmount > 0 && totalAmountAfterRowDiscount > 0) {
         effectiveGlobalPct = (globalDiscountAmount / totalAmountAfterRowDiscount) * 100;
       }
-      
+
       const globalDiscountPerUnit = (rateAfterRowDiscount * effectiveGlobalPct) / 100;
       const finalUnitRate = rateAfterRowDiscount - globalDiscountPerUnit;
-      
+
       return item.lastTaxCalculatedPrice === undefined || Math.abs(item.lastTaxCalculatedPrice - finalUnitRate) > 0.01;
     });
 
@@ -773,19 +773,19 @@ export const useSalesLogic = () => {
       const updatedItems = await Promise.all(items.map(async (item) => {
         const rowDiscountPerUnit = item.rowDiscount !== undefined ? item.rowDiscount : item.discount;
         const rateAfterRowDiscount = item.selPrice - rowDiscountPerUnit;
-        
+
         const totalAmountAfterRowDiscount = items.reduce((sum, i) => {
           const rDisc = i.rowDiscount !== undefined ? i.rowDiscount : i.discount;
           return sum + (i.selPrice - rDisc) * i.qty;
         }, 0);
-        
+
         let effectiveGlobalPct = 0;
         if (globalDiscountPercent > 0) {
           effectiveGlobalPct = globalDiscountPercent;
         } else if (globalDiscountAmount > 0 && totalAmountAfterRowDiscount > 0) {
           effectiveGlobalPct = (globalDiscountAmount / totalAmountAfterRowDiscount) * 100;
         }
-        
+
         const globalDiscountPerUnit = (rateAfterRowDiscount * effectiveGlobalPct) / 100;
         const finalUnitRate = rateAfterRowDiscount - globalDiscountPerUnit;
 
@@ -955,8 +955,8 @@ export const useSalesLogic = () => {
         const rate = data.taxRate !== undefined && data.taxRate !== null ? Number(data.taxRate) : 0;
 
         const isIndividual = data.productIndividualBarcode ? (
-          String(data.productIndividualBarcode).trim().toUpperCase() === "YES" || 
-          String(data.productIndividualBarcode).trim().toUpperCase() === "TRUE" || 
+          String(data.productIndividualBarcode).trim().toUpperCase() === "YES" ||
+          String(data.productIndividualBarcode).trim().toUpperCase() === "TRUE" ||
           data.productIndividualBarcode === true ||
           data.productIndividualBarcode === 1
         ) : false;
@@ -996,14 +996,14 @@ export const useSalesLogic = () => {
           const existingQty = items
             .filter(item => item.barcode === data.barcodedesc || (item.sourceCode && item.sourceCode === data.barcodeSourceBarcode))
             .reduce((sum, item) => sum + item.qty, 0);
-          
+
           if (existingQty + 1 > availableStock) {
             setPopup({
               isOpen: true,
               type: 'warning',
               title: 'Insufficient Stock',
               message: `Available stock is ${availableStock}.`,
-              subMessage: existingQty > 0 
+              subMessage: existingQty > 0
                 ? `You already have ${existingQty} in the cart. Cannot add another.`
                 : `Cannot add item because the product is out of stock.`
             });
@@ -1093,7 +1093,7 @@ export const useSalesLogic = () => {
   // Handle Update Qty
   const handleUpdateQty = (id: string, qty: number) => {
     if (formMode === 'VIEW' || formMode === 'LOCKED') return;
-    
+
     const targetItem = items.find(item => item.id === id);
     if (!targetItem) return;
 
@@ -1109,7 +1109,7 @@ export const useSalesLogic = () => {
       const otherQty = items
         .filter(item => item.id !== id && (item.barcode === targetItem.barcode || (item.sourceCode && item.sourceCode === targetItem.sourceCode)))
         .reduce((sum, item) => sum + item.qty, 0);
-      
+
       if (otherQty + sanitizedQty > targetItem.availableStock) {
         setPopup({
           isOpen: true,

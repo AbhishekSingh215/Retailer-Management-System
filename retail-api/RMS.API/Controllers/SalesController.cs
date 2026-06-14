@@ -825,6 +825,99 @@ public class SalesController : ControllerBase
             header.PurRoundoff = roundedNetAmount - rawNetAmount;
             header.PurNetAmount = roundedNetAmount;
 
+            // Remove existing Receipts if updating
+            var existingReceipts = await _context.Receipts.Where(r => r.ReceiptRefPurId == header.PurId).ToListAsync();
+            if (existingReceipts.Any())
+            {
+                _context.Receipts.RemoveRange(existingReceipts);
+                await _context.SaveChangesAsync();
+            }
+
+            // Gather payments to process
+            var paymentsToProcess = new List<(long PaymentTypeId, decimal Amount)>();
+            if (request.Payments != null && request.Payments.Any())
+            {
+                foreach (var p in request.Payments)
+                {
+                    if (p.Amount > 0)
+                    {
+                        paymentsToProcess.Add((p.PaymentTypeId, p.Amount));
+                    }
+                }
+            }
+            else
+            {
+                var paymentTypes = await _context.PaymentTypes.ToListAsync();
+                var cashType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("cash"));
+                var cardType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("card"));
+                var upiType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("upi"));
+                var advanceType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("advance"));
+                var bankType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("bank") || t.PaymentTypeName.ToLower().Contains("receipt"));
+
+                if (request.PurCashAmount.GetValueOrDefault() > 0 && cashType != null) paymentsToProcess.Add((cashType.PaymentTypeId, request.PurCashAmount.GetValueOrDefault()));
+                if (request.PurCardAmount.GetValueOrDefault() > 0 && cardType != null) paymentsToProcess.Add((cardType.PaymentTypeId, request.PurCardAmount.GetValueOrDefault()));
+                if (request.PurUpiAmount.GetValueOrDefault() > 0 && upiType != null) paymentsToProcess.Add((upiType.PaymentTypeId, request.PurUpiAmount.GetValueOrDefault()));
+                if (request.PurAdvanceAmount.GetValueOrDefault() > 0 && advanceType != null) paymentsToProcess.Add((advanceType.PaymentTypeId, request.PurAdvanceAmount.GetValueOrDefault()));
+                if (request.PurReceiptAmount.GetValueOrDefault() > 0 && bankType != null) paymentsToProcess.Add((bankType.PaymentTypeId, request.PurReceiptAmount.GetValueOrDefault()));
+            }
+
+            if (paymentsToProcess.Any())
+            {
+                long startReceiptId = _context.GetMaxPknolocation("Receipt", locationStr, "ReceiptId", "ReceiptLocation", "ReceiptMaxPkno");
+                long startReceiptPkNo = 1;
+                string startReceiptIdStr = startReceiptId.ToString();
+                if (startReceiptIdStr.StartsWith(locationStr) && startReceiptIdStr.Length > locationStr.Length)
+                {
+                    startReceiptPkNo = long.Parse(startReceiptIdStr.Substring(locationStr.Length));
+                }
+                else
+                {
+                    startReceiptPkNo = startReceiptId;
+                }
+
+                int receiptIndex = 0;
+                foreach (var p in paymentsToProcess)
+                {
+                    long currentReceiptPkNo = startReceiptPkNo + receiptIndex;
+                    long nextReceiptId = startReceiptIdStr.StartsWith(locationStr) ? long.Parse(locationStr + currentReceiptPkNo.ToString()) : currentReceiptPkNo;
+                    receiptIndex++;
+
+                    var subType = await _context.PaymentSubTypes.FirstOrDefaultAsync(st => st.PaymentSubTypePaymentId == p.PaymentTypeId);
+                    long paymentSubTypeId = subType?.PaymentSubTypeId ?? 0;
+
+                    var receipt = new Receipt
+                    {
+                        ReceiptId = nextReceiptId,
+                        ReceiptCompanyId = header.PurCompanyId,
+                        ReceiptCompanyCount = header.PurCompanyCount,
+                        ReceiptType = 1, // Sales
+                        ReceiptLocation = companyProfile?.CompanyLocation,
+                        ReceiptDocno = header.PurDocno,
+                        ReceiptDocDate = parsedDate,
+                        ReceiptCustomerId = cust?.CustomerId,
+                        ReceiptAmount = p.Amount,
+                        ReceiptAdjustAmount = p.Amount,
+                        ReceiptRecordCreated = DateTime.UtcNow,
+                        ReceiptRecordModified = DateTime.UtcNow,
+                        ReceiptUserNewId = userId,
+                        ReceiptLastModified = userId,
+                        ReceiptMaxPkno = currentReceiptPkNo,
+                        ReceiptRefPurId = header.PurId,
+                        ReceiptAdjustDate = parsedDate,
+                        ReceiptPaymentSubTypeId = paymentSubTypeId,
+                        ReceiptAdvanceId = 0,
+                        ReceiptReturnId = 0,
+                        ReceiptIsAdvance = false,
+                        ReceiptLedgerId = 0,
+                        ReceiptIsExpense = false,
+                        ReceiptDirection = 1,
+                        ReceiptNotes = null,
+                        ReceiptTransferGroupId = 0
+                    };
+                    _context.Receipts.Add(receipt);
+                }
+            }
+
             await _context.SaveChangesAsync();
 
             return Ok(new { success = true, purId = header.PurId, docNo = header.PurDocno, message = "Invoice saved successfully." });
