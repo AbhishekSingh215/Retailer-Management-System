@@ -380,8 +380,8 @@ const SalesEntry: React.FC = () => {
               </span>
             )}
             <div className="px-3 py-1 bg-slate-50 dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[12.5px] font-[1000] text-slate-900 dark:text-white shadow-sm flex items-center gap-2 min-h-[32px]">
-              <span className="text-indigo-600 dark:text-indigo-400 font-bold">#</span>
-              <span>{docNo}</span>
+              <span className="text-indigo-600 dark:text-indigo-400 font-bold">Doc No:</span>
+              <span>#{docNo}</span>
             </div>
           </div>
 
@@ -399,7 +399,7 @@ const SalesEntry: React.FC = () => {
                 disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
                 className={`w-full px-3 py-1 bg-white dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[12.5px] font-[1000] text-slate-900 dark:text-white shadow-sm outline-none flex items-center justify-between gap-2 focus:border-indigo-500 min-h-[32px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50 dark:hover:bg-white/10'}`}
               >
-                <span>{docDate ? new Date(docDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Select Date'}</span>
+                <span>{docDate ? `Date: ${new Date(docDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}` : 'Select Date'}</span>
                 <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               </button>
               <AnimatePresence>
@@ -739,12 +739,12 @@ const SalesEntry: React.FC = () => {
                 <th className="px-4 py-3 text-[11px] font-[1000] text-rose-200 uppercase tracking-wider text-right pr-[25px] bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc %</th>
                 <th className="px-4 py-3 text-[11px] font-[1000] text-rose-200 uppercase tracking-wider text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc Amt</th>
                 <th className="px-4 py-3 text-[11px] font-[1000] text-emerald-100 uppercase tracking-wider text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Rate</th>
-                <th className="px-4 py-3 text-[11px] font-[1000] text-rose-200 uppercase tracking-wider text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Per Disc</th>
                 <th className="px-4 py-3 text-[11px] font-[1000] text-indigo-100 uppercase tracking-wider bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">HSN</th>
                 <th className="px-4 py-3 text-[11px] font-[1000] text-indigo-100 uppercase tracking-wider bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Desc</th>
                 <th className="px-4 py-3 text-[11px] font-[1000] text-indigo-100 uppercase tracking-wider text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Amt</th>
                 <th className="px-4 py-3 text-[11px] font-[1000] text-white uppercase tracking-wider text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Qty</th>
                 <th className="px-4 py-3 text-[11px] font-[1000] text-white uppercase tracking-wider text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Net Amount</th>
+                <th className="px-4 py-3 text-[11px] font-[1000] text-rose-200 uppercase tracking-wider text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Per Disc</th>
                 <th className="px-4 py-3 text-[11px] font-[1000] text-white uppercase tracking-wider text-center bg-indigo-800 dark:bg-indigo-950">Action</th>
               </tr>
             </thead>
@@ -857,11 +857,6 @@ const SalesEntry: React.FC = () => {
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-[13px] font-bold text-slate-900 dark:text-slate-100 text-right border-r border-slate-100 dark:border-white/[0.03]">₹{(item.selPrice - (item.rowDiscount || 0)).toFixed(2)}</td>
-                  <td className="px-4 py-2 border-r border-slate-100 dark:border-white/[0.03] text-right">
-                    <span className="inline-block text-[13px] font-bold text-rose-600 dark:text-rose-400 pr-[9px]">
-                      ₹{(item.discount - (item.rowDiscount || 0)).toFixed(2)}
-                    </span>
-                  </td>
                   <td className="px-4 py-2.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border-r border-slate-100 dark:border-white/[0.03]">{item.hsn}</td>
                   <td className="px-4 py-2.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 border-r border-slate-100 dark:border-white/[0.03]">{item.taxDesc}</td>
                   <td className="px-4 py-2.5 text-[13px] font-medium text-slate-600 dark:text-slate-300 text-right border-r border-slate-100 dark:border-white/[0.03]">₹{item.taxAmt.toFixed(2)}</td>
@@ -896,6 +891,11 @@ const SalesEntry: React.FC = () => {
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-[14px] font-bold text-indigo-600 dark:text-indigo-400 text-right border-r border-slate-100 dark:border-white/[0.03]">₹{((item.selPrice - (item.rowDiscount || 0)) * item.qty).toFixed(2)}</td>
+                  <td className="px-4 py-2 border-r border-slate-100 dark:border-white/[0.03] text-right">
+                    <span className="inline-block text-[13px] font-bold text-rose-600 dark:text-rose-400 pr-[9px]">
+                      ₹{(item.discount - (item.rowDiscount || 0)).toFixed(2)}
+                    </span>
+                  </td>
                   <td className="px-4 py-2.5 text-center">
                     <button
                       onClick={() => handleRemoveItem(item.id)}
@@ -1163,12 +1163,12 @@ const SalesEntry: React.FC = () => {
                         <th className="px-4 py-3 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-24 text-right pr-[25px] border-r border-white/10">Disc %</th>
                         <th className="px-4 py-3 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Disc Amt</th>
                         <th className="px-4 py-3 text-[11px] font-[1000] text-emerald-200 uppercase tracking-widest w-36 text-right border-r border-white/10">Rate</th>
-                        <th className="px-4 py-3 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Per Disc</th>
                         <th className="px-4 py-3 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-32 border-r border-white/10">HSN</th>
                         <th className="px-4 py-3 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-40 border-r border-white/10">Tax Desc</th>
                         <th className="px-4 py-3 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-36 text-right border-r border-white/10">Tax Amt</th>
                         <th className="px-4 py-3 text-[11px] font-[1000] text-white uppercase tracking-widest w-24 text-right border-r border-white/10">Qty</th>
                         <th className="px-4 py-3 text-[11px] font-[1000] text-white uppercase tracking-widest w-40 text-right border-r border-white/10">Net Amount</th>
+                        <th className="px-4 py-3 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Per Disc</th>
                         <th className="px-4 py-3 text-[11px] font-[1000] text-white uppercase tracking-widest w-24 text-center">Action</th>
                       </tr>
                     </thead>
@@ -1275,11 +1275,6 @@ const SalesEntry: React.FC = () => {
                             )}
                           </td>
                           <td className="px-4 py-3.5 text-[13px] font-bold text-slate-100 text-right border-r border-white/5">₹{(item.selPrice - (item.rowDiscount || 0)).toFixed(2)}</td>
-                          <td className="px-4 py-3 border-r border-white/5 text-right">
-                            <span className="inline-block text-[12px] font-bold text-rose-400 pr-[9px]">
-                              ₹{(item.discount - (item.rowDiscount || 0)).toFixed(2)}
-                            </span>
-                          </td>
                           <td className="px-4 py-3.5 text-[12px] font-bold text-white/50 border-r border-white/5">{item.hsn}</td>
                           <td className="px-4 py-3.5 text-[12px] font-bold text-white/50 border-r border-white/5">{item.taxDesc}</td>
                           <td className="px-4 py-3.5 text-[12px] font-bold text-white/60 text-right border-r border-white/5">₹{item.taxAmt.toFixed(2)}</td>
@@ -1316,6 +1311,11 @@ const SalesEntry: React.FC = () => {
                             )}
                           </td>
                           <td className="px-4 py-3.5 text-[14px] font-bold text-indigo-300 text-right border-r border-white/5">₹{((item.selPrice - (item.rowDiscount || 0)) * item.qty).toFixed(2)}</td>
+                          <td className="px-4 py-3 border-r border-white/5 text-right">
+                            <span className="inline-block text-[12px] font-bold text-rose-400 pr-[9px]">
+                              ₹{(item.discount - (item.rowDiscount || 0)).toFixed(2)}
+                            </span>
+                          </td>
                           <td className="px-4 py-3.5 text-center">
                             <button
                               onClick={() => handleRemoveItem(item.id)}

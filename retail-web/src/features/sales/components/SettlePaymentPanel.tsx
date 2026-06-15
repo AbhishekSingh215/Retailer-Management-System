@@ -262,17 +262,11 @@ export const SettlePaymentPanel: React.FC<SettlePaymentPanelProps> = ({
               type="button"
               disabled={isReadOnly}
               onClick={() => {
-                const isCash = mode.label.toLowerCase().includes('cash');
-                const cashMode = paymentModesInfo.find(m => m.label.toLowerCase().includes('cash'));
-
                 if (isActive) {
-                  if (!isCash) {
-                    if (cashMode) {
-                      cashMode.setter(Number(((cashMode.value || 0) + mode.value).toFixed(2)));
-                    }
-                    mode.setter(0);
-                    setActivePaymentModes(prev => prev.filter(id => id !== mode.id));
-                  }
+                  // Set it to full amount and clear others
+                  paymentModesInfo.forEach(m => {
+                    m.setter(m.id === mode.id ? netPayable : 0);
+                  });
                 } else {
                   if (activePaymentModes.length === 1) {
                     paymentModesInfo.forEach(m => {
@@ -361,6 +355,7 @@ export const SettlePaymentPanel: React.FC<SettlePaymentPanelProps> = ({
                     placeholder="0.00"
                     readOnly={isReadOnly}
                     value={mode.value || ''}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       if (isReadOnly) return;
                       const val = parseFloat(e.target.value);
