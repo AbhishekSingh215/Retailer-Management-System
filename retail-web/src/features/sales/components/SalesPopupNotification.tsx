@@ -13,6 +13,7 @@ export interface PopupState {
   discardAction?: () => void;
   discardLabel?: string;
   cancelLabel?: string;
+  cancelAction?: () => void;
 }
 
 interface SalesPopupNotificationProps {
@@ -63,7 +64,10 @@ export const SalesPopupNotification: React.FC<SalesPopupNotificationProps> = ({ 
               <h3 className="text-[18px] font-[1000] text-gray-900 dark:text-white tracking-tight leading-tight truncate">{popup.title}</h3>
             </div>
             <button
-              onClick={() => setPopup(prev => ({ ...prev, isOpen: false }))}
+              onClick={() => {
+                popup.cancelAction?.();
+                setPopup(prev => ({ ...prev, isOpen: false, confirmAction: undefined, discardAction: undefined, cancelAction: undefined }));
+              }}
               className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-all self-start"
             >
               <X className="w-5 h-5" />
@@ -84,10 +88,13 @@ export const SalesPopupNotification: React.FC<SalesPopupNotificationProps> = ({ 
           </div>
 
           <div className="p-6 bg-slate-50/50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.08] flex justify-end gap-3 shrink-0">
-            {popup.confirmAction || popup.discardAction ? (
+            {popup.confirmAction || popup.discardAction || popup.cancelAction ? (
               <>
                 <button
-                  onClick={() => setPopup(prev => ({ ...prev, isOpen: false, confirmAction: undefined, discardAction: undefined }))}
+                  onClick={() => {
+                    popup.cancelAction?.();
+                    setPopup(prev => ({ ...prev, isOpen: false, confirmAction: undefined, discardAction: undefined, cancelAction: undefined }));
+                  }}
                   className="px-6 py-3 rounded-xl font-bold text-[14px] text-slate-600 dark:text-white/60 bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.1] transition-all"
                 >
                   {popup.cancelLabel || 'Cancel'}

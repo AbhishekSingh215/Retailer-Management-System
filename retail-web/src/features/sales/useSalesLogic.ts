@@ -57,6 +57,7 @@ export interface PopupMessage {
   discardAction?: () => void;
   discardLabel?: string;
   cancelLabel?: string;
+  cancelAction?: () => void;
 }
 
 export const recalculateItems = (
@@ -102,6 +103,15 @@ export const useSalesLogic = () => {
   const companyId = Number(localStorage.getItem('companyId') || '1');
   const companyCount = Number(localStorage.getItem('companyCount') || '1');
 
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('token');
+    const headers = {
+      ...options.headers,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    return fetch(url, { ...options, headers });
+  }, []);
+
   // State for header
   const [mobileNumber, setMobileNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -109,10 +119,19 @@ export const useSalesLogic = () => {
   const [docNo, setDocNo] = useState("Loading...");
   const [docDate, setDocDate] = useState(new Date().toISOString().split('T')[0]);
   const [formMode, setFormMode] = useState<'NEW' | 'VIEW' | 'EDIT' | 'LOCKED'>('NEW');
+
+  // Custom Reports State
+  const [customReports, setCustomReports] = useState<any[]>([]);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [loadingReportNo, setLoadingReportNo] = useState<number | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  
+  // Abort controller ref for report preview
+  const previewAbortControllerRef = useRef<AbortController | null>(null);
   const [currentPurId, setCurrentPurId] = useState<number | null>(null);
   const isExclusiveBill = false;
 
-  // Payment split states
+  // Payment split states 
   const [paymentAmounts, setPaymentAmounts] = useState<Record<number, number>>({});
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isCredit, setIsCredit] = useState(false);
@@ -127,7 +146,7 @@ export const useSalesLogic = () => {
 
   const fetchPaymentTypes = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/sales/payment-types`);
+      const res = await authFetch(`${API_BASE_URL}/sales/payment-types`);
       if (res.ok) {
         const data = await res.json();
         setPaymentTypes(data);
@@ -139,7 +158,7 @@ export const useSalesLogic = () => {
 
   const fetchSalesmen = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/sales/salesmen`);
+      const res = await authFetch(`${API_BASE_URL}/sales/salesmen`);
       if (res.ok) {
         const data = await res.json();
         setSalesmenList(data);
@@ -214,7 +233,7 @@ export const useSalesLogic = () => {
 
   const fetchNextDocNo = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/sales/next-docno?companyId=${companyId}&companyCount=${companyCount}`);
+      const res = await authFetch(`${API_BASE_URL}/sales/next-docno?companyId=${companyId}&companyCount=${companyCount}`);
       const data = await res.json();
       if (data && data.nextDocNo) {
         setDocNo(data.nextDocNo.toString());
@@ -235,7 +254,7 @@ export const useSalesLogic = () => {
   const fetchHistory = useCallback(async (page: number = 1, search: string = '', append: boolean = false) => {
     setIsLoadingHistory(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/sales/history?companyId=${companyId}&companyCount=${companyCount}&page=${page}&pageSize=50&searchTerm=${encodeURIComponent(search)}`);
+      const res = await authFetch(`${API_BASE_URL}/sales/history?companyId=${companyId}&companyCount=${companyCount}&page=${page}&pageSize=50&searchTerm=${encodeURIComponent(search)}`);
       const responseData = await res.json();
       if (responseData && Array.isArray(responseData.data)) {
         const formatted = responseData.data.map((item: any) => ({
@@ -269,12 +288,31 @@ export const useSalesLogic = () => {
     }
   }, [companyId, companyCount]);
 
+  const fetchCustomReports = useCallback(async () => {
+    console.log("[CustomReports] Fetching custom reports from:", `${API_BASE_URL}/sales/reports`);
+    try {
+      const res = await authFetch(`${API_BASE_URL}/sales/reports`);
+      console.log("[CustomReports] Fetch response status:", res.status);
+      if (res.ok) {
+        const data = await res.json();
+        console.log("[CustomReports] Loaded report options:", data);
+        setCustomReports(data);
+      } else {
+        const text = await res.text();
+        console.error("[CustomReports] API error details:", text);
+      }
+    } catch (err) {
+      console.error("[CustomReports] Error fetching custom reports:", err);
+    }
+  }, [authFetch]);
+
   useEffect(() => {
     fetchNextDocNo();
     fetchSalesmen();
     fetchPaymentTypes();
+    fetchCustomReports();
     // Intentionally omit fetchHistory here so we only fetch when modal opens
-  }, [fetchNextDocNo, fetchSalesmen, fetchPaymentTypes]);
+  }, [fetchNextDocNo, fetchSalesmen, fetchPaymentTypes, fetchCustomReports]);
 
   useEffect(() => {
     if (isHistoryOpen) {
@@ -317,7 +355,7 @@ export const useSalesLogic = () => {
     if (!inv.purId || loadingInvoiceId !== null) return;
     setLoadingInvoiceId(inv.purId);
     try {
-      const res = await fetch(`${API_BASE_URL}/sales/${inv.purId}`);
+      const res = await authFetch(`${API_BASE_URL}/sales/${inv.purId}`);
       const data = await res.json();
       if (res.ok) {
         setCurrentPurId(data.purId || data.PurId || inv.purId);
@@ -412,7 +450,7 @@ export const useSalesLogic = () => {
     }
   }, [loadingInvoiceId, paymentTypes]);
 
-  const saveToBackend = useCallback(async (targetStatus: 'EDIT' | 'LOCKED') => {
+  const saveToBackend = useCallback(async (targetStatus: 'EDIT' | 'LOCKED'): Promise<number | null> => {
     if (items.length === 0) {
       setPopup({
         isOpen: true,
@@ -448,7 +486,7 @@ export const useSalesLogic = () => {
       purSalesmanId,
       grossAmount: distributedItems.reduce((sum, i) => sum + (i.mrp * i.qty), 0),
       discountAmount: distributedItems.reduce((sum, i) => sum + (i.discount * i.qty), 0),
-      netAmount: distributedItems.reduce((sum, i) => sum + i.amount, 0),
+      netAmount: netPayable,  // exactly what is shown on screen (tax-inclusive, rounded)
       totalQty: distributedItems.reduce((sum, i) => sum + i.qty, 0),
       status: targetStatus,
       purDiscountPercent: globalDiscountPercent,
@@ -486,12 +524,10 @@ export const useSalesLogic = () => {
     };
 
     try {
-      const token = localStorage.getItem('token');
-      const res = await fetch(`${API_BASE_URL}/sales`, {
+      const res = await authFetch(`${API_BASE_URL}/sales`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
       });
@@ -519,6 +555,7 @@ export const useSalesLogic = () => {
             ? 'Click "New (F2)" to begin the next customer transaction.'
             : 'You can view or reload this draft anytime from the Sales Register (F3).'
         });
+        return data.purId;
       } else {
         setPopup({
           isOpen: true,
@@ -539,6 +576,7 @@ export const useSalesLogic = () => {
     } finally {
       setIsSaving(false);
     }
+    return null;
   }, [currentPurId, companyId, companyCount, docNo, docDate, customerName, mobileNumber, purSalesmanId, items, fetchHistory, performLoadInvoice, paymentAmounts, paymentTypes]);
 
   const handleNewSale = useCallback(() => {
@@ -614,6 +652,142 @@ export const useSalesLogic = () => {
     }
     saveToBackend('EDIT');
   }, [formMode, saveToBackend, isSaving, items.length]);
+
+  const handleSelectReport = useCallback(async (report: any) => {
+    if (items.length === 0) return;
+
+    let purIdToPreview = currentPurId;
+
+    if (formMode === 'NEW' || formMode === 'EDIT') {
+      const savedPurId = await saveToBackend('EDIT');
+      if (!savedPurId) {
+        return;
+      }
+      purIdToPreview = savedPurId;
+    }
+
+    if (purIdToPreview) {
+      if (previewAbortControllerRef.current) {
+        previewAbortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      previewAbortControllerRef.current = controller;
+
+      const reportPath = `${report.repPathName}\\${report.rctFileName}`;
+      const url = `${API_BASE_URL}/sales/report/preview/${purIdToPreview}?reportPath=${encodeURIComponent(reportPath)}`;
+      
+      setLoadingReportNo(report.rctNo);
+
+      try {
+        const res = await authFetch(url, { signal: controller.signal });
+        if (res.ok) {
+          const blob = await res.blob();
+          const fileUrl = URL.createObjectURL(blob);
+          window.open(fileUrl, '_blank');
+          setIsReportModalOpen(false);
+        } else {
+          const errData = await res.json();
+          setPopup({
+            isOpen: true,
+            type: 'error',
+            title: 'Report Preview Failed',
+            message: errData.message || 'Failed to load report template.',
+            subMessage: errData.error || 'Please verify the report template name and file system location.'
+          });
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          console.log("Preview request was aborted.");
+          return;
+        }
+        setPopup({
+          isOpen: true,
+          type: 'error',
+          title: 'Connection Error',
+          message: 'Could not connect to report runner API.',
+          subMessage: err.message
+        });
+      } finally {
+        setLoadingReportNo(null);
+      }
+    }
+  }, [items.length, formMode, currentPurId, saveToBackend, authFetch]);
+
+  const handlePreviewInvoice = useCallback(async () => {
+    if (items.length === 0) {
+      setPopup({
+        isOpen: true,
+        type: 'warning',
+        title: 'Empty Cart',
+        message: 'Cannot preview because there are no items in the cart.',
+        subMessage: 'Please scan or add at least one product.'
+      });
+      return;
+    }
+
+    if (customReports.length > 1) {
+      setIsReportModalOpen(true);
+      return;
+    }
+
+    let purIdToPreview = currentPurId;
+
+    if (formMode === 'NEW' || formMode === 'EDIT') {
+      const savedPurId = await saveToBackend('EDIT');
+      if (!savedPurId) {
+        return;
+      }
+      purIdToPreview = savedPurId;
+    }
+
+    if (purIdToPreview) {
+      if (previewAbortControllerRef.current) {
+        previewAbortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      previewAbortControllerRef.current = controller;
+
+      const report = customReports[0];
+      const reportPath = report ? `${report.repPathName}\\${report.rctFileName}` : '';
+      const url = reportPath 
+        ? `${API_BASE_URL}/sales/report/preview/${purIdToPreview}?reportPath=${encodeURIComponent(reportPath)}`
+        : `${API_BASE_URL}/sales/report/preview/${purIdToPreview}`;
+
+      setIsPreviewLoading(true);
+
+      try {
+        const res = await authFetch(url, { signal: controller.signal });
+        if (res.ok) {
+          const blob = await res.blob();
+          const fileUrl = URL.createObjectURL(blob);
+          window.open(fileUrl, '_blank');
+        } else {
+          const errData = await res.json();
+          setPopup({
+            isOpen: true,
+            type: 'error',
+            title: 'Report Preview Failed',
+            message: errData.message || 'Failed to load report template.',
+            subMessage: errData.error || 'Please verify the report template name and file system location.'
+          });
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          console.log("Preview request was aborted.");
+          return;
+        }
+        setPopup({
+          isOpen: true,
+          type: 'error',
+          title: 'Connection Error',
+          message: 'Could not connect to report runner API.',
+          subMessage: err.message
+        });
+      } finally {
+        setIsPreviewLoading(false);
+      }
+    }
+  }, [items.length, formMode, currentPurId, saveToBackend, customReports, authFetch]);
 
   const handleCompleteSale = useCallback(() => {
     if (isSaving) return;
@@ -792,7 +966,7 @@ export const useSalesLogic = () => {
         if (item.lastTaxCalculatedPrice === undefined || Math.abs(item.lastTaxCalculatedPrice - finalUnitRate) > 0.01) {
           try {
             const isIgst = item.taxDesc && item.taxDesc.toUpperCase().includes('IGST');
-            const res = await fetch(
+            const res = await authFetch(
               `${API_BASE_URL}/product/tax-rate?barcode=${encodeURIComponent(item.barcode)}&price=${finalUnitRate}&companyId=${companyId}&isInterstate=${isIgst}`
             );
             if (res.ok) {
@@ -834,7 +1008,7 @@ export const useSalesLogic = () => {
 
       setIsSearching(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/customer/search?query=${mobileNumber}`);
+        const response = await authFetch(`${API_BASE_URL}/customer/search?query=${mobileNumber}`);
         const data = await response.json();
 
         setSearchResults(data);
@@ -907,7 +1081,7 @@ export const useSalesLogic = () => {
 
       setIsScanningItem(true);
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `${API_BASE_URL}/product/scan/${barcodeInput}?companyId=${companyId}&mobileNumber=${encodeURIComponent(mobileNumber)}&currentPurId=${currentPurId || ''}`
         );
 
@@ -1333,6 +1507,7 @@ export const useSalesLogic = () => {
     handleLoadInvoice,
     saveToBackend,
     handleSaveInvoice,
+    handlePreviewInvoice,
     handleCompleteSale,
     handleCustomerSelect,
     handleMobileChange,
@@ -1368,6 +1543,12 @@ export const useSalesLogic = () => {
     setIsPaymentModalOpen,
     isCredit,
     setIsCredit,
-    paymentTypes
+    paymentTypes,
+    customReports,
+    isReportModalOpen,
+    setIsReportModalOpen,
+    handleSelectReport,
+    loadingReportNo,
+    isPreviewLoading
   };
 };

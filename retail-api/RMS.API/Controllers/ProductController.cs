@@ -57,24 +57,20 @@ namespace RMS.API.Controllers
                 var sourceBarcode = result.BarcodeSourceBarcode;
 
                 // Query 1: By barcode ID
-                var totals1 = await query
+                decimal barcodeStock = await query
                     .Where(t => t.PurtBarcodeId == barcodeId)
-                    .Select(t => new { Debit = t.PurtDebitQty, Credit = t.PurtCreditQty })
-                    .ToListAsync();
+                    .SumAsync(t => (t.PurtDebitQty ?? 0m) - (t.PurtCreditQty ?? 0m));
 
-                stockDebit += totals1.Sum(x => x.Debit ?? 0);
-                stockCredit += totals1.Sum(x => x.Credit ?? 0);
+                stockDebit += barcodeStock;
 
                 // Query 2: By source code where Barcode ID is null
                 if (!string.IsNullOrEmpty(sourceBarcode))
                 {
-                    var totals2 = await query
+                    decimal sourceStock = await query
                         .Where(t => t.PurtBarcodeId == null && t.PurtSourcecode == sourceBarcode)
-                        .Select(t => new { Debit = t.PurtDebitQty, Credit = t.PurtCreditQty })
-                        .ToListAsync();
+                        .SumAsync(t => (t.PurtDebitQty ?? 0m) - (t.PurtCreditQty ?? 0m));
 
-                    stockDebit += totals2.Sum(x => x.Debit ?? 0);
-                    stockCredit += totals2.Sum(x => x.Credit ?? 0);
+                    stockDebit += sourceStock;
                 }
 
                 result.AvailableStock = stockDebit - stockCredit;

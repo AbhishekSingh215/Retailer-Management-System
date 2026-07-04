@@ -273,6 +273,8 @@ public partial class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.BarcodeId, "IX_BarcodeDetails_Product");
 
+            entity.Property(e => e.BarcodeColorId).HasColumnName("BarcodeColorID");
+            entity.Property(e => e.BarcodeSizeId).HasColumnName("BarcodeSizeID");
             entity.Property(e => e.BarcodeBaseCost).HasColumnType("numeric(14, 4)");
             entity.Property(e => e.BarcodeCostCode)
                 .HasMaxLength(50)
@@ -291,6 +293,12 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.BarcodeRate).HasColumnType("numeric(14, 4)");
             entity.Property(e => e.BarcodeRecordCreated).HasColumnType("datetime");
             entity.Property(e => e.BarcodeRecordModified).HasColumnType("datetime");
+            entity.Property(e => e.BarcodeSourceBarcode)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.BarcodeDesc)
+                .HasMaxLength(50)
+                .IsUnicode(false);
             entity.Property(e => e.BarcodeRemarks)
                 .HasMaxLength(250)
                 .IsUnicode(false);

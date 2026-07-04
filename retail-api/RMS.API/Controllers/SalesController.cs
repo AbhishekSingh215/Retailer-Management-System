@@ -1,6 +1,10 @@
 using System;
+using System.IO;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Data;
+using Microsoft.Data.SqlClient;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RMS.Application.DTOs;
@@ -14,11 +18,29 @@ namespace RMS.API.Controllers;
 [Route("api/[controller]")]
 public class SalesController : ControllerBase
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _activeSaves = new();
     private readonly IApplicationDbContext _context;
+    private readonly ICrystalReportService _reportService;
 
-    public SalesController(IApplicationDbContext context)
+    public SalesController(IApplicationDbContext context, ICrystalReportService reportService)
     {
         _context = context;
+        _reportService = reportService;
+    }
+
+    [HttpGet("debug-connection")]
+    public IActionResult DebugConnection()
+    {
+        var dbContext = (DbContext)_context;
+        var connStr = dbContext.Database.GetDbConnection().ConnectionString;
+        var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connStr);
+        return Ok(new 
+        { 
+            server = builder.DataSource, 
+            database = builder.InitialCatalog,
+            userId = builder.UserID,
+            fullConnectionString = connStr
+        });
     }
 
     [HttpGet("salesmen")]
@@ -71,7 +93,8 @@ public class SalesController : ControllerBase
         [FromQuery] long companyCount = 1,
         [FromQuery] string? searchTerm = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 50)
+        [FromQuery] int pageSize = 50,
+        CancellationToken cancellationToken = default)
     {
         var query = from p in _context.Purchases.AsNoTracking()
                     where p.PurCompanyId == companyId && p.PurCompanyCount == companyCount && p.PurType == DocTypeConstants.SalesInvoice && !p.IsDeleted
@@ -92,7 +115,7 @@ public class SalesController : ControllerBase
             );
         }
 
-        var totalRecords = await query.CountAsync();
+        var totalRecords = await query.CountAsync(cancellationToken);
 
         var rawHistory = await query
             .OrderByDescending(x => x.p.PurDocno)
@@ -113,7 +136,7 @@ public class SalesController : ControllerBase
                 CustomerName = x.c != null ? x.c.CustomerName : null,
                 CustomerMobile = x.c != null ? x.c.CustomerMobileNo : null
             })
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         var history = rawHistory.Select(x => new
         {
@@ -139,25 +162,164 @@ public class SalesController : ControllerBase
     }
 
     [HttpGet("{purId}")]
-    public async Task<IActionResult> GetInvoice(long purId)
+    public async Task<IActionResult> GetInvoice(long purId, CancellationToken cancellationToken = default)
     {
-        var header = await _context.Purchases.FirstOrDefaultAsync(p => p.PurId == purId && !p.IsDeleted);
+        async Task<Purchase?> GetPurchaseHeaderViaSP(long id, CancellationToken ct)
+        {
+            var dbContext = (DbContext)_context;
+            using var command = dbContext.Database.GetDbConnection().CreateCommand();
+            command.CommandText = "GetAllPurchase";
+            command.CommandType = System.Data.CommandType.StoredProcedure;
+            
+            var paramPurId = command.CreateParameter();
+            paramPurId.ParameterName = "@PurId";
+            paramPurId.Value = id;
+            command.Parameters.Add(paramPurId);
+
+            var paramCond = command.CreateParameter();
+            paramCond.ParameterName = "@WhereCond";
+            paramCond.Value = "AND IsDeleted = 0";
+            command.Parameters.Add(paramCond);
+
+            if (command.Connection.State != System.Data.ConnectionState.Open)
+                await command.Connection.OpenAsync(ct);
+
+            using var reader = await command.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct))
+            {
+                return new Purchase
+                {
+                    PurId = Convert.ToInt64(reader["PurId"]),
+                    PurCompanyId = reader["PurCompanyId"] != DBNull.Value ? Convert.ToInt64(reader["PurCompanyId"]) : 0,
+                    PurCompanyCount = reader["PurCompanyCount"] != DBNull.Value ? Convert.ToInt64(reader["PurCompanyCount"]) : 0,
+                    PurType = reader["PurType"] != DBNull.Value ? Convert.ToInt64(reader["PurType"]) : (long?)null,
+                    PurDocno = reader["PurDocno"] != DBNull.Value ? Convert.ToInt64(reader["PurDocno"]) : 0,
+                    PurDocDate = reader["PurDocDate"] != DBNull.Value ? Convert.ToDateTime(reader["PurDocDate"]) : (DateTime?)null,
+                    PurCustomerId = reader["PurCustomerId"] != DBNull.Value ? Convert.ToInt64(reader["PurCustomerId"]) : (long?)null,
+                    PurSalesmanId = reader["PurSalesmanId"] != DBNull.Value ? Convert.ToInt64(reader["PurSalesmanId"]) : (long?)null,
+                    PurComments = reader["PurComments"]?.ToString(),
+                    PurBillNo = reader["PurBillNo"]?.ToString(),
+                    PurVerify = reader["PurVerify"] != DBNull.Value ? Convert.ToBoolean(reader["PurVerify"]) : (bool?)null,
+                    PurGrossAmount = reader["PurGrossAmount"] != DBNull.Value ? Convert.ToDecimal(reader["PurGrossAmount"]) : (decimal?)null,
+                    PurNetAmount = reader["PurNetAmount"] != DBNull.Value ? Convert.ToDecimal(reader["PurNetAmount"]) : (decimal?)null,
+                    PurTotalQty = reader["PurTotalQty"] != DBNull.Value ? Convert.ToDecimal(reader["PurTotalQty"]) : (decimal?)null,
+                    PurDiscountPercent = reader["PurDiscountPercent"] != DBNull.Value ? Convert.ToDecimal(reader["PurDiscountPercent"]) : (decimal?)null,
+                    PurDiscountAmount = reader["PurDiscountAmount"] != DBNull.Value ? Convert.ToDecimal(reader["PurDiscountAmount"]) : (decimal?)null,
+                    PurExclusiveBill = reader["PurExclusiveBill"] != DBNull.Value ? Convert.ToBoolean(reader["PurExclusiveBill"]) : (bool?)null,
+                    PurCreditBill = reader["PurCreditBill"] != DBNull.Value ? Convert.ToBoolean(reader["PurCreditBill"]) : (bool?)null,
+                    // PurCashAmount = reader["PurCashAmount"] != DBNull.Value ? Convert.ToDecimal(reader["PurCashAmount"]) : (decimal?)null,
+                    // PurCardAmount = reader["PurCardAmount"] != DBNull.Value ? Convert.ToDecimal(reader["PurCardAmount"]) : (decimal?)null,
+                    // PurUpiAmount = reader["PurUpiAmount"] != DBNull.Value ? Convert.ToDecimal(reader["PurUpiAmount"]) : (decimal?)null,
+                    // PurAdvanceAmount = reader["PurAdvanceAmount"] != DBNull.Value ? Convert.ToDecimal(reader["PurAdvanceAmount"]) : (decimal?)null,
+                    // PurReceiptAmount = reader["PurReceiptAmount"] != DBNull.Value ? Convert.ToDecimal(reader["PurReceiptAmount"]) : (decimal?)null,
+                };
+            }
+            return null;
+        }
+
+        async Task<List<PurchaseTrn>> GetPurchaseTrnsViaSP(long id, CancellationToken ct)
+        {
+            var list = new List<PurchaseTrn>();
+            var dbContext = (DbContext)_context;
+            using var command = dbContext.Database.GetDbConnection().CreateCommand();
+            command.CommandText = "GetPurchaseDetails";
+            command.CommandType = System.Data.CommandType.StoredProcedure;
+            
+            var param = command.CreateParameter();
+            param.ParameterName = "@PurtPurID";
+            param.Value = id;
+            command.Parameters.Add(param);
+
+            if (command.Connection.State != System.Data.ConnectionState.Open)
+                await command.Connection.OpenAsync(ct);
+
+            using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                list.Add(new PurchaseTrn
+                {
+                    PurtId = Convert.ToInt64(reader["PurtId"]),
+                    PurtPurId = Convert.ToInt64(reader["PurtPurId"]),
+                    PurtBarcodeId = reader["PurtBarcodeId"] != DBNull.Value ? Convert.ToInt64(reader["PurtBarcodeId"]) : (long?)null,
+                    PurtProductId = reader["PurtProductId"] != DBNull.Value ? Convert.ToInt64(reader["PurtProductId"]) : (long?)null,
+                    PurtColorId = reader["PurtColorId"] != DBNull.Value ? Convert.ToInt64(reader["PurtColorId"]) : (long?)null,
+                    PurtTaxId = reader["PurtTaxId"] != DBNull.Value ? Convert.ToInt32(reader["PurtTaxId"]) : (int?)null,
+                    PurtTaxRate1 = reader["PurtTaxRate1"] != DBNull.Value ? Convert.ToDecimal(reader["PurtTaxRate1"]) : (decimal?)null,
+                    PurtTaxRate2 = reader["PurtTaxRate2"] != DBNull.Value ? Convert.ToDecimal(reader["PurtTaxRate2"]) : (decimal?)null,
+                    PurtTaxAmount1 = reader["PurtTaxAmount1"] != DBNull.Value ? Convert.ToDecimal(reader["PurtTaxAmount1"]) : (decimal?)null,
+                    PurtTaxAmount2 = reader["PurtTaxAmount2"] != DBNull.Value ? Convert.ToDecimal(reader["PurtTaxAmount2"]) : (decimal?)null,
+                    PurtDebitQty = reader["PurtDebitQty"] != DBNull.Value ? Convert.ToDecimal(reader["PurtDebitQty"]) : (decimal?)null,
+                    PurtCreditQty = reader["PurtCreditQty"] != DBNull.Value ? Convert.ToDecimal(reader["PurtCreditQty"]) : (decimal?)null,
+                    PurtSelPrice = reader["PurtSelPrice"] != DBNull.Value ? Convert.ToDecimal(reader["PurtSelPrice"]) : (decimal?)null,
+                    PurtMrp = reader["PurtMrp"] != DBNull.Value ? Convert.ToDecimal(reader["PurtMrp"]) : (decimal?)null,
+                    PurtDiscountPercent = reader["PurtDiscountPercent"] != DBNull.Value ? Convert.ToDecimal(reader["PurtDiscountPercent"]) : (decimal?)null,
+                    PurtDiscAmount = reader["PurtDiscAmount"] != DBNull.Value ? Convert.ToDecimal(reader["PurtDiscAmount"]) : (decimal?)null,
+                    PurtSize = reader["PurtSize"]?.ToString() ?? "Free",
+                    PurtSourcecode = reader["PurtSourcecode"]?.ToString() ?? "",
+                    PurtRemarks = reader["PurtRemarks"]?.ToString() ?? "",
+                });
+            }
+            return list;
+        }
+
+        var header = await GetPurchaseHeaderViaSP(purId, cancellationToken);
         if (header == null) return NotFound(new { message = "Invoice not found." });
 
-        var cust = header.PurCustomerId.HasValue ? await _context.Customers.FirstOrDefaultAsync(c => c.CustomerId == header.PurCustomerId.Value) : null;
-        var salesman = header.PurSalesmanId.HasValue ? await _context.Salesmen.FirstOrDefaultAsync(s => s.SalesmanId == header.PurSalesmanId.Value) : null;
+        // Load receipts and payment configurations to calculate correct payment amounts
+        var receipts = await _context.Receipts
+            .AsNoTracking()
+            .Where(r => r.ReceiptRefPurId == purId)
+            .ToListAsync(cancellationToken);
 
-        var trns = await _context.PurchaseTrns
-            .Where(t => t.PurtPurId == purId)
-            .ToListAsync();
+        var paymentSubTypes = await _context.PaymentSubTypes
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        var paymentTypes = await _context.PaymentTypes
+            .AsNoTracking()
+            .Select(pt => new { pt.PaymentTypeId, pt.PaymentTypeName })
+            .ToListAsync(cancellationToken);
+
+        var cashType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("cash"));
+        var cardType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("card"));
+        var upiType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("upi"));
+        var advanceType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("advance"));
+        var bankType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("ubank") || t.PaymentTypeName.ToLower().Contains("receipt"));
+
+        var paymentAmounts = receipts
+            .GroupBy(r => paymentSubTypes.FirstOrDefault(st => st.PaymentSubTypeId == r.ReceiptPaymentSubTypeId)?.PaymentSubTypePaymentId)
+            .Where(g => g.Key.HasValue)
+            .ToDictionary(g => g.Key!.Value, g => g.Sum(r => r.ReceiptAmount ?? 0m));
+
+        header.PurCashAmount = cashType != null && paymentAmounts.ContainsKey(cashType.PaymentTypeId) ? paymentAmounts[cashType.PaymentTypeId] : 0;
+        header.PurCardAmount = cardType != null && paymentAmounts.ContainsKey(cardType.PaymentTypeId) ? paymentAmounts[cardType.PaymentTypeId] : 0;
+        header.PurUpiAmount = upiType != null && paymentAmounts.ContainsKey(upiType.PaymentTypeId) ? paymentAmounts[upiType.PaymentTypeId] : 0;
+        header.PurAdvanceAmount = advanceType != null && paymentAmounts.ContainsKey(advanceType.PaymentTypeId) ? paymentAmounts[advanceType.PaymentTypeId] : 0;
+        header.PurReceiptAmount = bankType != null && paymentAmounts.ContainsKey(bankType.PaymentTypeId) ? paymentAmounts[bankType.PaymentTypeId] : 0;
+
+        var cust = header.PurCustomerId.HasValue ? await _context.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.CustomerId == header.PurCustomerId.Value, cancellationToken) : null;
+        var salesman = header.PurSalesmanId.HasValue ? await _context.Salesmen.AsNoTracking().FirstOrDefaultAsync(s => s.SalesmanId == header.PurSalesmanId.Value, cancellationToken) : null;
+
+        var trns = await GetPurchaseTrnsViaSP(purId, cancellationToken);
 
         // Bulk load all related entities to solve the N+1 query problem and prevent timeouts
         var barcodeIds = trns.Where(t => t.PurtBarcodeId.HasValue && t.PurtBarcodeId.Value > 0).Select(t => t.PurtBarcodeId.GetValueOrDefault()).Distinct().ToList();
         var sourceCodes = trns.Where(t => !t.PurtBarcodeId.HasValue || t.PurtBarcodeId.Value <= 0).Where(t => !string.IsNullOrEmpty(t.PurtSourcecode)).Select(t => t.PurtSourcecode).Distinct().ToList();
 
-        var barcodes = await _context.BarcodeDetails
-            .Where(b => (b.BarcodeId.HasValue && barcodeIds.Contains(b.BarcodeId.Value)) || sourceCodes.Contains(b.BarcodeSourceBarcode))
-            .ToListAsync();
+        var barcodesById = await _context.BarcodeDetails
+            .AsNoTracking()
+            .Where(b => b.BarcodeId.HasValue && barcodeIds.Contains(b.BarcodeId.Value))
+            .ToListAsync(cancellationToken);
+
+        var barcodesBySource = sourceCodes.Any() ? await _context.BarcodeDetails
+            .AsNoTracking()
+            .Where(b => b.BarcodeSourceBarcode != null && sourceCodes.Contains(b.BarcodeSourceBarcode))
+            .ToListAsync(cancellationToken) : new List<BarcodeDetail>();
+
+        var barcodes = barcodesById.Concat(barcodesBySource)
+            .GroupBy(b => b.BarcodeId)
+            .Select(g => g.First())
+            .ToList();
 
         var barcodeDict = barcodes.Where(b => b.BarcodeId.HasValue).GroupBy(b => b.BarcodeId.GetValueOrDefault()).ToDictionary(g => g.Key, g => g.First());
         var barcodeSourceDict = barcodes.Where(b => !string.IsNullOrEmpty(b.BarcodeSourceBarcode)).GroupBy(b => b.BarcodeSourceBarcode!).ToDictionary(g => g.Key, g => g.First());
@@ -166,28 +328,33 @@ public class SalesController : ControllerBase
         var colorIds = barcodes.Select(b => b.BarcodeColorId).Where(id => id.HasValue).Select(id => id.GetValueOrDefault()).Distinct().ToList();
 
         var products = await _context.ProductMasters
+            .AsNoTracking()
             .Where(p => productIds.Contains(p.ProductId))
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         var colors = await _context.Colors
+            .AsNoTracking()
             .Where(c => colorIds.Contains(c.ColorId))
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         var categoryIds = products.Select(p => p.ProductCtId).Where(id => id.HasValue).Select(id => id.GetValueOrDefault()).Distinct().ToList();
         var hsnIds = products.Select(p => p.ProductHsnId).Where(id => id.HasValue).Select(id => id.GetValueOrDefault()).Distinct().ToList();
 
         var categories = await _context.Categories
+            .AsNoTracking()
             .Where(c => categoryIds.Contains(c.CategoryId))
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         var hsns = await _context.Hsns
+            .AsNoTracking()
             .Where(h => hsnIds.Contains(h.HsnId))
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         var taxIds = trns.Where(t => t.PurtTaxId.HasValue).Select(t => t.PurtTaxId.GetValueOrDefault()).Distinct().ToList();
         var taxMasters = await _context.TaxMasters
+            .AsNoTracking()
             .Where(tx => taxIds.Contains(tx.TaxId))
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         var productDict = products.GroupBy(p => p.ProductId).ToDictionary(g => g.Key, g => g.First());
         var categoryDict = categories.GroupBy(c => c.CategoryId).ToDictionary(g => g.Key, g => g.First());
@@ -195,29 +362,54 @@ public class SalesController : ControllerBase
         var hsnDict = hsns.GroupBy(h => h.HsnId).ToDictionary(g => g.Key, g => g.First());
         var taxDict = taxMasters.GroupBy(tx => tx.TaxId).ToDictionary(g => g.Key, g => g.First());
 
-        // Bulk calculate available stock for all loaded items (excluding current invoice)
-        var stockTransactions = await _context.PurchaseTrns
-            .AsNoTracking()
-            .Where(t => t.PurtPurId != purId) // Exclude current invoice
-            .Where(t => (t.PurtBarcodeId.HasValue && barcodeIds.Contains(t.PurtBarcodeId.Value)) 
-                     || (!t.PurtBarcodeId.HasValue && t.PurtSourcecode != null && sourceCodes.Contains(t.PurtSourcecode)))
-            .Select(t => new {
-                BarcodeId = t.PurtBarcodeId,
-                SourceCode = t.PurtSourcecode,
-                Debit = t.PurtDebitQty ?? 0,
-                Credit = t.PurtCreditQty ?? 0
-            })
-            .ToListAsync();
+        // Bulk calculate available stock for all loaded items (excluding current invoice) directly in DB
+        var stockByBarcodeId = new Dictionary<long, decimal>();
+        var stockBySourceCode = new Dictionary<string, decimal>();
 
-        var stockByBarcodeId = stockTransactions
-            .Where(t => t.BarcodeId.HasValue)
-            .GroupBy(t => t.BarcodeId!.Value)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Debit - x.Credit));
+        if (_context is DbContext dbContext)
+        {
+            using var transaction = await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadUncommitted, cancellationToken);
+            try
+            {
+                if (barcodeIds.Any())
+                {
+                    var barcodeStockList = await _context.PurchaseTrns
+                        .AsNoTracking()
+                        .Where(t => t.PurtBarcodeId.HasValue && barcodeIds.Contains(t.PurtBarcodeId.Value) && t.PurtPurId != purId)
+                        .GroupBy(t => t.PurtBarcodeId!.Value)
+                        .Select(g => new
+                        {
+                            BarcodeId = g.Key,
+                            Stock = g.Sum(t => (t.PurtDebitQty ?? 0m) - (t.PurtCreditQty ?? 0m))
+                        })
+                        .ToListAsync(cancellationToken);
 
-        var stockBySourceCode = stockTransactions
-            .Where(t => !t.BarcodeId.HasValue && !string.IsNullOrEmpty(t.SourceCode))
-            .GroupBy(t => t.SourceCode!)
-            .ToDictionary(g => g.Key, g => g.Sum(x => x.Debit - x.Credit));
+                    stockByBarcodeId = barcodeStockList.ToDictionary(x => x.BarcodeId, x => x.Stock);
+                }
+
+                if (sourceCodes.Any())
+                {
+                    var sourceStockList = await _context.PurchaseTrns
+                        .AsNoTracking()
+                        .Where(t => !t.PurtBarcodeId.HasValue && t.PurtSourcecode != null && sourceCodes.Contains(t.PurtSourcecode) && t.PurtPurId != purId)
+                        .GroupBy(t => t.PurtSourcecode)
+                        .Select(g => new
+                        {
+                            SourceCode = g.Key,
+                            Stock = g.Sum(t => (t.PurtDebitQty ?? 0m) - (t.PurtCreditQty ?? 0m))
+                        })
+                        .ToListAsync(cancellationToken);
+
+                    stockBySourceCode = sourceStockList
+                        .Where(x => x.SourceCode != null)
+                        .ToDictionary(x => x.SourceCode!, x => x.Stock);
+                }
+            }
+            finally
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+        }
 
         var items = new List<SalesLineItemDto>();
         foreach (var t in trns)
@@ -307,7 +499,7 @@ public class SalesController : ControllerBase
             });
         }
 
-            return Ok(new SalesInvoiceDto
+        return Ok(new SalesInvoiceDto
         {
             PurId = header.PurId,
             CompanyId = header.PurCompanyId ?? 1,
@@ -350,8 +542,16 @@ public class SalesController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> SaveInvoice([FromBody] SalesInvoiceDto request)
+    public async Task<IActionResult> SaveInvoice([FromBody] SalesInvoiceDto request, CancellationToken cancellationToken = default)
     {
+        if (request == null) return BadRequest(new { message = "Invalid request payload." });
+
+        string saveKey = $"{request.CompanyId}_{request.CompanyCount}_{request.DocNo}";
+        if (!_activeSaves.TryAdd(saveKey, true))
+        {
+            return StatusCode(409, new { success = false, message = "Another save request for this invoice is already in progress. Please wait." });
+        }
+
         try
         {
             if (request == null) return BadRequest(new { message = "Invalid request payload." });
@@ -374,16 +574,29 @@ public class SalesController : ControllerBase
                 .GroupBy(i => string.IsNullOrEmpty(i.Barcode) ? i.SourceCode : i.Barcode)
                 .ToList();
 
+            var bds = new List<BarcodeDetail>();
+            var pmDict = new Dictionary<long, ProductMaster>();
+
             if (groupedItems.Any())
             {
                 var barcodeKeys = groupedItems.Select(g => g.Key).ToList();
-                
-                // Fetch all BarcodeDetails in one query
-                var bds = await _context.BarcodeDetails
-                    .Where(b => barcodeKeys.Contains(b.BarcodeDesc) || barcodeKeys.Contains(b.BarcodeSourceBarcode))
+
+                // Fetch all BarcodeDetails in one query using separate index-seeking lookups
+                var bdsByDesc = await _context.BarcodeDetails
+                    .AsNoTracking()
+                    .Where(b => barcodeKeys.Contains(b.BarcodeDesc))
                     .ToListAsync();
 
-                
+                var bdsBySource = await _context.BarcodeDetails
+                    .AsNoTracking()
+                    .Where(b => b.BarcodeSourceBarcode != null && barcodeKeys.Contains(b.BarcodeSourceBarcode))
+                    .ToListAsync();
+
+                bds = bdsByDesc.Concat(bdsBySource)
+                    .GroupBy(b => b.BarcodeId)
+                    .Select(g => g.First())
+                    .ToList();
+
                 var barcodeProductIds = bds.Select(b => b.BarcodeProductId).Where(id => id.HasValue).Select(id => id.Value).Distinct().ToList();
 
                 // Fetch all ProductMasters in one query
@@ -391,39 +604,69 @@ public class SalesController : ControllerBase
                     .Where(p => barcodeProductIds.Contains(p.ProductId))
                     .ToListAsync();
 
-                var pmDict = pms.ToDictionary(p => p.ProductId);
+                pmDict = pms.ToDictionary(p => p.ProductId);
 
-                // Fetch all stock transactions in one query (excluding current invoice if present)
+                // Fetch all stock transactions directly aggregated in DB (excluding current invoice if present)
                 var bdIds = bds.Where(b => b.BarcodeId.HasValue).Select(b => b.BarcodeId!.Value).Distinct().ToList();
                 var sourceCodes = bds.Where(b => !string.IsNullOrEmpty(b.BarcodeSourceBarcode)).Select(b => b.BarcodeSourceBarcode!).Distinct().ToList();
 
-                var stockQuery = _context.PurchaseTrns.AsNoTracking();
-                if (request.PurId > 0)
+                var stockByBarcodeId = new Dictionary<long, decimal>();
+                var stockBySourceCode = new Dictionary<string, decimal>();
+
+                if (_context is DbContext dbContextForStock)
                 {
-                    stockQuery = stockQuery.Where(t => t.PurtPurId != request.PurId);
+                    using var transaction = await dbContextForStock.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadUncommitted, cancellationToken);
+                    try
+                    {
+                        if (bdIds.Any())
+                        {
+                            var barcodeStockQuery = _context.PurchaseTrns.AsNoTracking()
+                                .Where(t => t.PurtBarcodeId.HasValue && bdIds.Contains(t.PurtBarcodeId.Value));
+                            
+                            if (request.PurId > 0)
+                            {
+                                barcodeStockQuery = barcodeStockQuery.Where(t => t.PurtPurId != request.PurId);
+                            }
+
+                            var barcodeStockList = await barcodeStockQuery
+                                .GroupBy(t => t.PurtBarcodeId!.Value)
+                                .Select(g => new {
+                                    BarcodeId = g.Key,
+                                    Stock = g.Sum(t => (t.PurtDebitQty ?? 0m) - (t.PurtCreditQty ?? 0m))
+                                })
+                                .ToListAsync(cancellationToken);
+
+                            stockByBarcodeId = barcodeStockList.ToDictionary(x => x.BarcodeId, x => x.Stock);
+                        }
+
+                        if (sourceCodes.Any())
+                        {
+                            var sourceStockQuery = _context.PurchaseTrns.AsNoTracking()
+                                .Where(t => !t.PurtBarcodeId.HasValue && t.PurtSourcecode != null && sourceCodes.Contains(t.PurtSourcecode));
+
+                            if (request.PurId > 0)
+                            {
+                                sourceStockQuery = sourceStockQuery.Where(t => t.PurtPurId != request.PurId);
+                            }
+
+                            var sourceStockList = await sourceStockQuery
+                                .GroupBy(t => t.PurtSourcecode)
+                                .Select(g => new {
+                                    SourceCode = g.Key,
+                                    Stock = g.Sum(t => (t.PurtDebitQty ?? 0m) - (t.PurtCreditQty ?? 0m))
+                                })
+                                .ToListAsync(cancellationToken);
+
+                            stockBySourceCode = sourceStockList
+                                .Where(x => x.SourceCode != null)
+                                .ToDictionary(x => x.SourceCode!, x => x.Stock);
+                        }
+                    }
+                    finally
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                    }
                 }
-
-                var stockTransactions = await stockQuery
-                    .Where(t => (t.PurtBarcodeId.HasValue && bdIds.Contains(t.PurtBarcodeId.Value)) 
-                             || (!t.PurtBarcodeId.HasValue && t.PurtSourcecode != null && sourceCodes.Contains(t.PurtSourcecode)))
-                    .Select(t => new {
-                        BarcodeId = t.PurtBarcodeId,
-                        SourceCode = t.PurtSourcecode,
-                        Debit = t.PurtDebitQty ?? 0,
-                        Credit = t.PurtCreditQty ?? 0
-                    })
-                    .ToListAsync();
-
-                // Calculate available stock per item in memory
-                var stockByBarcodeId = stockTransactions
-                    .Where(t => t.BarcodeId.HasValue)
-                    .GroupBy(t => t.BarcodeId!.Value)
-                    .ToDictionary(g => g.Key, g => g.Sum(x => x.Debit - x.Credit));
-
-                var stockBySourceCode = stockTransactions
-                    .Where(t => !t.BarcodeId.HasValue && !string.IsNullOrEmpty(t.SourceCode))
-                    .GroupBy(t => t.SourceCode!)
-                    .ToDictionary(g => g.Key, g => g.Sum(x => x.Debit - x.Credit));
 
                 foreach (var group in groupedItems)
                 {
@@ -497,14 +740,14 @@ public class SalesController : ControllerBase
 
             if (request.PurId > 0)
             {
-                header = await _context.Purchases.FirstOrDefaultAsync(p => p.PurId == request.PurId);
+                header = await _context.Purchases.AsNoTracking().FirstOrDefaultAsync(p => p.PurId == request.PurId);
             }
             else
             {
-                header = await _context.Purchases.FirstOrDefaultAsync(p => 
-                    p.PurCompanyId == request.CompanyId && 
-                    p.PurCompanyCount == request.CompanyCount && 
-                    p.PurType == DocTypeConstants.SalesInvoice && 
+                header = await _context.Purchases.AsNoTracking().FirstOrDefaultAsync(p =>
+                    p.PurCompanyId == request.CompanyId &&
+                    p.PurCompanyCount == request.CompanyCount &&
+                    p.PurType == DocTypeConstants.SalesInvoice &&
                     p.PurDocno == request.DocNo &&
                     !p.IsDeleted);
             }
@@ -535,13 +778,12 @@ public class SalesController : ControllerBase
                     PurMaxPkno = maxPurPkNo,
                     PurCompanyId = request.CompanyId,
                     PurCompanyCount = request.CompanyCount,
-                    PurType = DocTypeConstants.SalesInvoice, // Sales FormType
+                    PurType = DocTypeConstants.SalesInvoice,
                     PurDocno = request.DocNo,
                     PurLocation = companyProfile?.CompanyLocation,
                     PurRecordCreated = DateTime.UtcNow,
                     PurUserNewId = userId
                 };
-                _context.Purchases.Add(header);
             }
 
             if (header != null && (!header.PurMaxPkno.HasValue || header.PurMaxPkno.Value == 0) && header.PurLocation.HasValue)
@@ -584,7 +826,6 @@ public class SalesController : ControllerBase
                         CustomerTimeStamp = new byte[8]
                     };
                     _context.Customers.Add(cust);
-                    await _context.SaveChangesAsync();
                 }
             }
 
@@ -592,7 +833,7 @@ public class SalesController : ControllerBase
             header.PurSupplierId = header.PurSupplierId ?? 0;
             header.PurDocDate = parsedDate;
             header.PurComments = string.IsNullOrWhiteSpace(request.Remarks) ? request.CustomerName : request.Remarks;
-            header.PurBillNo = ""; // Set to empty string or null as per request (not customer mobile no anymore)
+            header.PurBillNo = "";
             header.PurSalesmanId = request.PurSalesmanId;
             header.PurStatus = request.Status == "LOCKED" ? "Completed" : "Draft";
             header.PurExclusiveBill = request.PurExclusiveBill ?? false;
@@ -626,17 +867,7 @@ public class SalesController : ControllerBase
                 header.PurAdvanceAmount = request.PurAdvanceAmount;
                 header.PurReceiptAmount = request.PurReceiptAmount;
             }
-                header.PurRecordModified = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync(); // Save header to generate PurId if new
-
-            // Remove existing line items
-            var existingItems = await _context.PurchaseTrns.Where(t => t.PurtPurId == header.PurId).ToListAsync();
-            if (existingItems.Any())
-            {
-                _context.PurchaseTrns.RemoveRange(existingItems);
-                await _context.SaveChangesAsync();
-            }
+            header.PurRecordModified = DateTime.UtcNow;
 
             // Add new line items
             decimal totalCgst = 0;
@@ -682,6 +913,8 @@ public class SalesController : ControllerBase
                 startPurtPkNo = startPurtId;
             }
 
+            var purchaseTrns = new List<PurchaseTrn>();
+
             int itemIndex = 0;
             foreach (var item in request.Items)
             {
@@ -689,8 +922,8 @@ public class SalesController : ControllerBase
                 long nextPurtId = startPurtIdStr.StartsWith(locationStr) ? long.Parse(locationStr + currentPurtPkNo.ToString()) : currentPurtPkNo;
                 itemIndex++;
 
-                var bd = await _context.BarcodeDetails.FirstOrDefaultAsync(b => b.BarcodeDesc == item.Barcode || b.BarcodeSourceBarcode == item.Barcode);
-                var pm = bd != null ? await _context.ProductMasters.FirstOrDefaultAsync(p => p.ProductId == bd.BarcodeProductId) : null;
+                var bd = bds.FirstOrDefault(b => b.BarcodeDesc == item.Barcode || b.BarcodeSourceBarcode == item.Barcode);
+                var pm = (bd != null && bd.BarcodeProductId.HasValue && pmDict.ContainsKey(bd.BarcodeProductId.Value)) ? pmDict[bd.BarcodeProductId.Value] : null;
 
                 decimal taxInclusiveUnitPrice = item.SelPrice - item.Discount;
                 decimal taxInclusiveAmount = taxInclusiveUnitPrice * item.Qty;
@@ -700,11 +933,11 @@ public class SalesController : ControllerBase
                 if (pm != null && pm.ProductHsnId.HasValue && pm.ProductHsnId.Value > 0)
                 {
                     tax = await GetTaxForProductAsync(
-                        _context, 
-                        pm.ProductHsnId.Value, 
-                        taxInclusiveUnitPrice, 
-                        parsedDate, 
-                        isInterstate, 
+                        _context,
+                        pm.ProductHsnId.Value,
+                        taxInclusiveUnitPrice,
+                        parsedDate,
+                        isInterstate,
                         request.CompanyId);
                 }
 
@@ -770,6 +1003,7 @@ public class SalesController : ControllerBase
                     PurtMrp = item.Mrp,
                     PurtSelPrice = item.SelPrice,
                     PurtDiscAmount = item.PerDiscount,
+                    PurtRate = item.SelPrice - item.PerDiscount,
                     PurtDebitQty = 0,
                     PurtCreditQty = item.Qty,
                     PurtCreditAmount = baseAmount,
@@ -779,7 +1013,7 @@ public class SalesController : ControllerBase
                     PurtTaxRate2 = taxRate2,
                     PurtTaxAmount1 = taxamount1,
                     PurtTaxAmount2 = taxamount2,
-                    PurtPurchaseRate = item.Mrp, // Rate matches Mrp in POS
+                    PurtPurchaseRate = item.Mrp,
                     PurtPerDiscount = item.Discount,
                     PurtDiscountPercent = item.DiscountPercent ?? 0,
                     PurtCostRate = bd?.BarcodeRate ?? 0,
@@ -802,7 +1036,7 @@ public class SalesController : ControllerBase
                     PurtRecordCreated = DateTime.UtcNow,
                     PurtRecordModified = DateTime.UtcNow
                 };
-                _context.PurchaseTrns.Add(trn);
+                purchaseTrns.Add(trn);
             }
 
             // Update header totals
@@ -820,18 +1054,9 @@ public class SalesController : ControllerBase
             header.PurSgstAmount = totalSgst;
             header.PurIgstAmount = totalIgst;
 
-            decimal rawNetAmount = request.Items.Sum(i => (i.SelPrice - i.Discount) * i.Qty);
-            decimal roundedNetAmount = Math.Round(rawNetAmount);
-            header.PurRoundoff = roundedNetAmount - rawNetAmount;
-            header.PurNetAmount = roundedNetAmount;
-
-            // Remove existing Receipts if updating
-            var existingReceipts = await _context.Receipts.Where(r => r.ReceiptRefPurId == header.PurId).ToListAsync();
-            if (existingReceipts.Any())
-            {
-                _context.Receipts.RemoveRange(existingReceipts);
-                await _context.SaveChangesAsync();
-            }
+            // Save exactly what the frontend shows on screen — no recalculation needed
+            header.PurRoundoff = Math.Round(request.NetAmount) - request.NetAmount;
+            header.PurNetAmount = Math.Round(request.NetAmount);
 
             // Gather payments to process
             var paymentsToProcess = new List<(long PaymentTypeId, decimal Amount)>();
@@ -847,7 +1072,9 @@ public class SalesController : ControllerBase
             }
             else
             {
-                var paymentTypes = await _context.PaymentTypes.ToListAsync();
+                var paymentTypes = await _context.PaymentTypes
+                    .Select(t => new { t.PaymentTypeId, t.PaymentTypeName })
+                    .ToListAsync(cancellationToken);
                 var cashType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("cash"));
                 var cardType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("card"));
                 var upiType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("upi"));
@@ -861,70 +1088,108 @@ public class SalesController : ControllerBase
                 if (request.PurReceiptAmount.GetValueOrDefault() > 0 && bankType != null) paymentsToProcess.Add((bankType.PaymentTypeId, request.PurReceiptAmount.GetValueOrDefault()));
             }
 
-            if (paymentsToProcess.Any())
+            // Write all database changes atomically in a transaction block
+            var dbContext = (DbContext)_context;
+            using var dbTransaction = await dbContext.Database.BeginTransactionAsync();
+            try
             {
-                long startReceiptId = _context.GetMaxPknolocation("Receipt", locationStr, "ReceiptId", "ReceiptLocation", "ReceiptMaxPkno");
-                long startReceiptPkNo = 1;
-                string startReceiptIdStr = startReceiptId.ToString();
-                if (startReceiptIdStr.StartsWith(locationStr) && startReceiptIdStr.Length > locationStr.Length)
+                // Save customer if modified/new
+                if (cust != null)
                 {
-                    startReceiptPkNo = long.Parse(startReceiptIdStr.Substring(locationStr.Length));
-                }
-                else
-                {
-                    startReceiptPkNo = startReceiptId;
-                }
-
-                int receiptIndex = 0;
-                foreach (var p in paymentsToProcess)
-                {
-                    long currentReceiptPkNo = startReceiptPkNo + receiptIndex;
-                    long nextReceiptId = startReceiptIdStr.StartsWith(locationStr) ? long.Parse(locationStr + currentReceiptPkNo.ToString()) : currentReceiptPkNo;
-                    receiptIndex++;
-
-                    var subType = await _context.PaymentSubTypes.FirstOrDefaultAsync(st => st.PaymentSubTypePaymentId == p.PaymentTypeId);
-                    long paymentSubTypeId = subType?.PaymentSubTypeId ?? 0;
-
-                    var receipt = new Receipt
+                    var exists = await _context.Customers.AnyAsync(c => c.CustomerId == cust.CustomerId);
+                    if (!exists)
                     {
-                        ReceiptId = nextReceiptId,
-                        ReceiptCompanyId = header.PurCompanyId,
-                        ReceiptCompanyCount = header.PurCompanyCount,
-                        ReceiptType = 1, // Sales
-                        ReceiptLocation = companyProfile?.CompanyLocation,
-                        ReceiptDocno = header.PurDocno,
-                        ReceiptDocDate = parsedDate,
-                        ReceiptCustomerId = cust?.CustomerId,
-                        ReceiptAmount = p.Amount,
-                        ReceiptAdjustAmount = p.Amount,
-                        ReceiptRecordCreated = DateTime.UtcNow,
-                        ReceiptRecordModified = DateTime.UtcNow,
-                        ReceiptUserNewId = userId,
-                        ReceiptLastModified = userId,
-                        ReceiptMaxPkno = currentReceiptPkNo,
-                        ReceiptRefPurId = header.PurId,
-                        ReceiptAdjustDate = parsedDate,
-                        ReceiptPaymentSubTypeId = paymentSubTypeId,
-                        ReceiptAdvanceId = 0,
-                        ReceiptReturnId = 0,
-                        ReceiptIsAdvance = false,
-                        ReceiptLedgerId = 0,
-                        ReceiptIsExpense = false,
-                        ReceiptDirection = 1,
-                        ReceiptNotes = null,
-                        ReceiptTransferGroupId = 0
-                    };
-                    _context.Receipts.Add(receipt);
+                        _context.Customers.Add(cust);
+                    }
+                    await _context.SaveChangesAsync();
                 }
-            }
 
-            await _context.SaveChangesAsync();
+                header.PurCustomerId = cust?.CustomerId;
+
+                // Delete existing items & receipts from DB directly (fast)
+                await dbContext.Database.ExecuteSqlRawAsync("DELETE FROM PurchaseTrn WHERE PurtPurId = {0}", header.PurId);
+                await dbContext.Database.ExecuteSqlRawAsync("DELETE FROM PurchaseChargeTrn WHERE PurcPurId = {0}", header.PurId);
+                await dbContext.Database.ExecuteSqlRawAsync("DELETE FROM Receipt WHERE ReceiptRefPurId = {0}", header.PurId);
+
+                // Call stored procedure InsertPurchase
+                await SavePurchaseViaSP(header, purchaseTrns);
+
+                // Create receipts if payments exist
+                if (paymentsToProcess.Any())
+                {
+                    long startReceiptId = _context.GetMaxPknolocation("Receipt", locationStr, "ReceiptId", "ReceiptLocation", "ReceiptMaxPkno");
+                    long startReceiptPkNo = 1;
+                    string startReceiptIdStr = startReceiptId.ToString();
+                    if (startReceiptIdStr.StartsWith(locationStr) && startReceiptIdStr.Length > locationStr.Length)
+                    {
+                        startReceiptPkNo = long.Parse(startReceiptIdStr.Substring(locationStr.Length));
+                    }
+                    else
+                    {
+                        startReceiptPkNo = startReceiptId;
+                    }
+
+                    int receiptIndex = 0;
+                    foreach (var p in paymentsToProcess)
+                    {
+                        long currentReceiptPkNo = startReceiptPkNo + receiptIndex;
+                        long nextReceiptId = startReceiptIdStr.StartsWith(locationStr) ? long.Parse(locationStr + currentReceiptPkNo.ToString()) : currentReceiptPkNo;
+                        receiptIndex++;
+
+                        var subType = await _context.PaymentSubTypes.FirstOrDefaultAsync(st => st.PaymentSubTypePaymentId == p.PaymentTypeId);
+                        long paymentSubTypeId = subType?.PaymentSubTypeId ?? 0;
+
+                        var receipt = new Receipt
+                        {
+                            ReceiptId = nextReceiptId,
+                            ReceiptCompanyId = header.PurCompanyId,
+                            ReceiptCompanyCount = header.PurCompanyCount,
+                            ReceiptType = 1, // Sales
+                            ReceiptLocation = companyProfile?.CompanyLocation,
+                            ReceiptDocno = header.PurDocno,
+                            ReceiptDocDate = parsedDate,
+                            ReceiptCustomerId = cust?.CustomerId,
+                            ReceiptAmount = p.Amount,
+                            ReceiptAdjustAmount = p.Amount,
+                            ReceiptRecordCreated = DateTime.UtcNow,
+                            ReceiptRecordModified = DateTime.UtcNow,
+                            ReceiptUserNewId = userId,
+                            ReceiptLastModified = userId,
+                            ReceiptMaxPkno = currentReceiptPkNo,
+                            ReceiptRefPurId = header.PurId,
+                            ReceiptAdjustDate = parsedDate,
+                            ReceiptPaymentSubTypeId = paymentSubTypeId,
+                            ReceiptAdvanceId = 0,
+                            ReceiptReturnId = 0,
+                            ReceiptIsAdvance = false,
+                            ReceiptLedgerId = 0,
+                            ReceiptIsExpense = false,
+                            ReceiptDirection = 1,
+                            ReceiptNotes = null,
+                            ReceiptTransferGroupId = 0
+                        };
+                        _context.Receipts.Add(receipt);
+                    }
+                    await _context.SaveChangesAsync();
+                }
+
+                await dbTransaction.CommitAsync();
+            }
+            catch (Exception)
+            {
+                await dbTransaction.RollbackAsync();
+                throw;
+            }
 
             return Ok(new { success = true, purId = header.PurId, docNo = header.PurDocno, message = "Invoice saved successfully." });
         }
         catch (Exception ex)
-        {
+            {
             return StatusCode(500, new { success = false, message = ex.Message, details = ex.InnerException?.Message });
+        }
+        finally
+        {
+            _activeSaves.TryRemove(saveKey, out _);
         }
     }
 
@@ -1024,5 +1289,488 @@ public class SalesController : ControllerBase
 
         return null;
     }
-}
 
+    [HttpGet("reports")]
+    public async Task<IActionResult> GetReports()
+    {
+        try
+        {
+            Console.WriteLine("[CustomReports] GET /api/sales/reports requested.");
+            var repHdr = await _context.RepCustoms
+                .FirstOrDefaultAsync(r => r.RepDesc != null && r.RepDesc.Trim().ToUpper() == "BILL");
+
+            if (repHdr == null)
+            {
+                Console.WriteLine("[CustomReports] No header record found for 'BILL'.");
+                return Ok(new List<object>());
+            }
+
+            Console.WriteLine($"[CustomReports] Found header repNo: {repHdr.RepNo}, repPathName: {repHdr.RepPathName}");
+
+            var reports = await _context.RepCustomTrns
+                .Where(t => t.RctRepNo == repHdr.RepNo)
+                .OrderBy(t => t.RctOrder)
+                .Select(t => new
+                {
+                    rctNo = t.RctNo,
+                    rctDesc = t.RctDesc,
+                    rctFileName = t.RctFileName,
+                    repPathName = repHdr.RepPathName
+                })
+                .ToListAsync();
+
+            Console.WriteLine($"[CustomReports] Returning {reports.Count} child report layouts.");
+            return Ok(reports);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CustomReports] Error fetching custom reports: {ex.Message}");
+            return StatusCode(500, new { message = "Failed to load custom reports.", error = ex.Message });
+        }
+    }
+
+    [HttpGet("report/preview/{purId}")]
+    public async Task<IActionResult> PreviewReport(long purId, [FromQuery] string? reportPath = null)
+    {
+        try
+        {
+            string connectionString = "";
+            if (_context is DbContext dbContext)
+            {
+                connectionString = dbContext.Database.GetDbConnection().ConnectionString;
+            }
+
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                return StatusCode(500, new { message = "Database connection string is not configured in the application context." });
+            }
+
+            DataTable salesData = GetSalesDataForReport(purId, connectionString);
+            if (salesData.Rows.Count == 0)
+            {
+                return NotFound(new { message = $"No database records found for PurId: {purId}" });
+            }
+
+            DataTable taxData = GetTaxDataForSubreport(purId, connectionString);
+            var subreports = new Dictionary<string, DataTable>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "BillTaxDetailsSubReport", taxData }
+            };
+
+            string rptName = string.IsNullOrEmpty(reportPath) ? "Sales-Bill.rpt" : reportPath;
+            byte[] pdfBytes = await _reportService.GenerateReportAsync(rptName, salesData, subreports);
+
+            Response.Headers.Add("Content-Disposition", $"inline; filename=SalesBill_{purId}.pdf");
+            return File(pdfBytes, "application/pdf");
+        }
+        catch (FileNotFoundException ex)
+        {
+            return StatusCode(404, new { message = ex.Message, error = "Template File Not Found" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { message = "An unexpected error occurred during preview generation.", error = ex.Message, details = ex.StackTrace });
+        }
+    }
+
+    private DataTable GetSalesDataForReport(long purId, string connectionString)
+    {
+        string query = @"
+        SELECT 
+            PurId AS SalesId, 
+            PurDocno AS SalesDocNo, 
+            PurDocDate AS SalesDocDate,
+            ISNULL(CompanyName, '') AS CompanyName,
+            ISNULL(CompanyAddress1, '') AS CompanyAddress1,
+            ISNULL(CompanyAddress2, '') AS CompanyAddress2,
+            ISNULL(ct.CityName, '') AS CompanyCityName,
+            ISNULL(cs.StateName, '') AS CompanyStateName,
+            ISNULL(CompanyEmailId, '') AS CompanyEmailId,
+            ISNULL(ComapnyGstinNo, '') AS CompanyGstinNo,
+            ISNULL(CompanyGstCode, '') AS CompanyGstCode,
+            ISNULL(CompanyWhatsappMobileNo, '') AS CompanyWhatsappMobileNo,
+            ISNULL(CustomerName, '') AS CustomerName,
+            ISNULL(CustomerAddress1, '') AS CustomerAddress1,
+            ISNULL(CustomerAddress2, '') AS CustomerAddress2,
+            ISNULL(cc.CityName, '') AS CustomerCity,
+            ISNULL(csn.StateName, '') AS StateName,
+            ISNULL(CustomerEmailId, '') AS CustomerEmailId,
+            ISNULL(CustomerMobileNo, '') AS CustomerMobileNo,
+            ISNULL(CustomerMobileNo2, '') AS CustomerMobileNo2,
+            ISNULL(CustomerGstNo, '') AS CustomerGstNo,
+            ISNULL(CustomerPanNo, '') AS CustomerPanNo,
+            PurtProductId AS SalesProductId,
+            ProductCode,
+            ProductDesc,
+            ISNULL(ColorCode, '') AS ColorCode,
+            ISNULL(ColorName, '') AS ColorName,
+            ISNULL(BrandName, '') AS BrandName,
+            ISNULL(CategoryCode, '') AS CategoryCode,
+            ISNULL(CategoryDescription, '') AS CategoryDescription,
+            ISNULL(DeptCode, '') AS DeptCode,
+            ISNULL(DeptDescription, '') AS DeptDescription,
+            ISNULL(HsnCode, '') AS HsnCode,
+            PurtBarcodeId AS SalesBarcodeId,
+            Cast(BarcodeDesc As Varchar(15)) as BarcodeDesc,
+            BarcodeSourceBarcode,
+            ISNULL(PurtPerQty, 0) AS SalesPerQty,
+            ISNULL(PurtDebitQty, 0) AS SalesDebitQty,
+            ISNULL(PurtCreditQty, 0) AS SalesCreditQty,
+            ISNULL(PurtCreditAmount, 0) AS SalesCreditAmount,
+            ISNULL(PurtMrp, 0) AS SalesMrp,
+            ISNULL(PurtSelPrice, 0) AS SalesSelPrice,
+            ISNULL(PurtRate, 0) AS SalesRate,
+            ISNULL(PurGrossAmount, 0) AS SalesGrossAmount,
+            ISNULL(PurtDiscountPercent, 0) AS SalesDiscountPercent,
+            ISNULL(PurtDiscAmount, 0) AS SalesDiscountAmount,
+            ISNULL(PurNetAmount, 0) AS SalesNetAmount,
+            PurType AS SalesType,
+            PurtHsnId AS SalesHsnId,
+            ISNULL(TaxDescription, '') AS TaxDescription,
+            (CASE TaxType WHEN 1 THEN 'Cgst' WHEN 2 THEN 'Igst' END) AS TaxDesc1,
+            (CASE TaxType WHEN 1 THEN 'Sgst' WHEN 2 THEN '' END) AS TaxDesc2,
+            PurtTaxRate1 AS SalesTaxRate1,
+            PurtTaxRate2 AS SalesTaxRate2,
+            PurtTaxAmount1 AS SalesTaxAmount1,
+            PurtTaxAmount2 AS SalesTaxAmount2,
+            ISNULL(CompanyPincode, '') AS CompanyPincode,
+            ISNULL(csn.StateGstcode, '') AS CustomerGstStatecode,
+            ISNULL(CompanyPhoneNo, '') AS CompanyPhoneNo,
+            ISNULL(CompanyMobileNo, '') AS CompanyMobileNo,
+            ISNULL(PurtSize, '') AS SalesSize,
+            ISNULL(SizeCode, '') AS SizeCode,
+            ISNULL(ProductFromSize, '') AS ProductFromSize,
+            ISNULL(ProductToSize, '') AS ProductToSize,
+            ISNULL(ProductMiddleSize, '') AS ProductMiddleSize,
+            ISNULL((SELECT SUM(ReceiptAdjustAmount) FROM Receipt 
+                    LEFT JOIN PaymentSubType ON PaymentSubtypeid = ReceiptPaymentSubTypeId 
+                    LEFT JOIN PaymentType ON Paymenttypeid = PaymentSubTypePaymentId 
+                    WHERE PaymentTypeName = 'Cash-In-Hand' AND ReceiptRefPurID = PurId AND ReceiptType = 1), 0) AS CashAmount,
+            ISNULL((SELECT SUM(ReceiptAdjustAmount) FROM Receipt 
+                    LEFT JOIN PaymentSubType ON PaymentSubtypeid = ReceiptPaymentSubTypeId 
+                    LEFT JOIN PaymentType ON Paymenttypeid = PaymentSubTypePaymentId 
+                    WHERE PaymentTypeName = 'UPI' AND ReceiptRefPurID = PurId AND ReceiptType = 1), 0) AS UpiAmount,
+            ISNULL((SELECT SUM(ReceiptAdjustAmount) FROM Receipt 
+                    LEFT JOIN PaymentSubType ON PaymentSubtypeid = ReceiptPaymentSubTypeId 
+                    LEFT JOIN PaymentType ON Paymenttypeid = PaymentSubTypePaymentId 
+                    WHERE PaymentTypeName = 'Card' AND ReceiptRefPurID = PurId AND ReceiptType = 1), 0) AS CardAmount,
+            ISNULL((SELECT SUM(ReceiptAdjustAmount) FROM Receipt 
+                    LEFT JOIN PaymentSubType ON PaymentSubtypeid = ReceiptPaymentSubTypeId 
+                    LEFT JOIN PaymentType ON Paymenttypeid = PaymentSubTypePaymentId 
+                    WHERE (PaymentTypeName = 'Credit Note' OR PaymentTypeName = 'CreditNote') AND ReceiptRefPurID = PurId AND ReceiptType = 1), 0) AS CNoteAmount,
+            ISNULL(CompanyBillPrintMessage,'') AS CompanyBillPrintMessage,
+            CAST(NULL AS VARBINARY(MAX)) AS UpiId
+        FROM Purchase 
+        LEFT JOIN PurchaseTrn ON PurId = PurtPurId 
+        LEFT JOIN BarcodeDetails ON BarcodeId = PurtBarcodeId 
+        LEFT JOIN ProductMaster ON ProductId = PurtProductId 
+        LEFT JOIN Colors ON ColorId = PurtColorID 
+        LEFT JOIN Brand ON BrandId = ProductBrandId 
+        LEFT JOIN Customer ON CustomerId = PurCustomerId 
+        LEFT JOIN City cc ON cc.CityId = CustomerCityId 
+        LEFT JOIN Salesman ON SalesmanId = CASE WHEN PurtSalesmanID > 0 THEN PurtSalesmanID ELSE PurSalesmanId END
+        LEFT JOIN Category ON CategoryId = ProductCtId 
+        LEFT JOIN Department ON DeptId = CategoryDeptId 
+        LEFT JOIN Hsn ON HsnId = PurtHsnId 
+        LEFT JOIN TaxMaster ON TaxId = PurtTaxId 
+        LEFT JOIN CompanyProfile ON CompanyId = PurCompanyId 
+        LEFT JOIN States csn ON csn.StateId = cc.CityStateId 
+        LEFT JOIN City ct ON ct.CityId = CompanyCityNo 
+        LEFT JOIN States cs ON cs.StateId = CompanyStateNo 
+        LEFT JOIN SizeMaster ON SizeId = ProductSizeId 
+        Left join FormType on ScreenNo =PurType 
+        WHERE PurId = @PurId";
+
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        {
+            using (SqlCommand cmd = new SqlCommand(query, conn))
+            {
+                cmd.CommandTimeout = 120;
+                cmd.Parameters.AddWithValue("@PurId", purId);
+                using (SqlDataAdapter da = new SqlDataAdapter(cmd))
+                {
+                    DataTable dt = new DataTable("SalesData");
+                    da.Fill(dt);
+                    return dt;
+                }
+            }
+        }
+    }
+
+    private DataTable GetTaxDataForSubreport(long purId, string connectionString)
+    {
+        string query = @"
+        SELECT
+            p.PurId AS SalesId,
+            p.PurId AS SalesDocno,
+            pt.PurtTaxId AS SalesTaxID,
+            ISNULL(pt.PurtTaxRate1, 0) AS SalesTaxRate1,
+            ISNULL(pt.PurtTaxRate2, 0) AS SalesTaxRate2,
+            ISNULL(SUM(
+                (ISNULL(pt.PurtDebitQty, 0) - ISNULL(pt.PurtCreditQty, 0))
+                * ISNULL(pt.PurtRate, 0)
+                - ISNULL(pt.PurtDiscAmount, 0)
+            ), 0) AS TaxableAmount,
+            ISNULL(SUM(pt.PurtTaxAmount1), 0) AS TaxAmount1,
+            ISNULL(SUM(pt.PurtTaxAmount2), 0) AS TaxAmount2
+        FROM Purchase p
+        INNER JOIN PurchaseTrn pt ON pt.PurtPurId = p.PurId
+        WHERE p.PurId = @PurId
+          AND ISNULL(pt.PurtTaxId, 0) > 0
+        GROUP BY p.PurId, pt.PurtTaxId, pt.PurtTaxRate1, pt.PurtTaxRate2
+        ORDER BY pt.PurtTaxRate1, pt.PurtTaxRate2";
+
+        using (SqlConnection conn = new SqlConnection(connectionString))
+        {
+            using (SqlCommand cmd = new SqlCommand(query, conn))
+            {
+                cmd.CommandTimeout = 120;
+                cmd.Parameters.AddWithValue("@PurId", purId);
+                using (SqlDataAdapter da = new SqlDataAdapter(cmd))
+                {
+                    DataTable dt = new DataTable("BillTaxDetailsSubReport");
+                    da.Fill(dt);
+                    return dt;
+                }
+            }
+        }
+    }
+        private async Task SavePurchaseViaSP(Purchase header, List<PurchaseTrn> lines)
+    {
+        var dbContext = (DbContext)_context;
+        var connection = dbContext.Database.GetDbConnection();
+        bool wasOpen = connection.State == System.Data.ConnectionState.Open;
+        if (!wasOpen) await connection.OpenAsync();
+
+        try
+        {
+            using (var cmd = connection.CreateCommand())
+            {
+                cmd.CommandText = "InsertPurchase";
+                cmd.CommandType = System.Data.CommandType.StoredProcedure;
+                cmd.CommandTimeout = 120; // 2 minutes
+
+                if (dbContext.Database.CurrentTransaction != null)
+                {
+                    cmd.Transaction = Microsoft.EntityFrameworkCore.Storage.DbContextTransactionExtensions.GetDbTransaction(dbContext.Database.CurrentTransaction);
+                }
+
+                // Add header parameters
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurCompanyId", (object)header.PurCompanyId));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurCompanyCount", (object)header.PurCompanyCount));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurType", (object)header.PurType));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurLocation", header.PurLocation.HasValue ? (object)header.PurLocation.Value : DBNull.Value));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurDocNo", (object)header.PurDocno));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurDocDate", header.PurDocDate.HasValue ? (object)header.PurDocDate.Value : DBNull.Value));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurCustomerId", header.PurCustomerId.HasValue ? (object)header.PurCustomerId.Value : DBNull.Value));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurSupplierId", (object)(header.PurSupplierId ?? 0)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurGrossAmount", (object)(header.PurGrossAmount ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurDiscountPercent", (object)(header.PurDiscountPercent ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurDiscountAmount", (object)(header.PurDiscountAmount ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurIgstAmount", (object)(header.PurIgstAmount ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurCgstAmount", (object)(header.PurCgstAmount ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurSgstAmount", (object)(header.PurSgstAmount ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurUgstAmount", (object)(header.PurUgstAmount ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurGstType", (object)(header.PurGstType ?? 0)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurTcsAmount", (object)(header.PurTcsAmount ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurRecordCreated", (object)(header.PurRecordCreated ?? DateTime.UtcNow)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurRecordModified", (object)(header.PurRecordModified ?? DateTime.UtcNow)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurUserNewId", (object)(header.PurUserNewId ?? 0)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurLastModified", (object)(header.PurLastModified ?? 0)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurTimeStamp", (object)0L)); 
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurMaxPkno", header.PurMaxPkno.HasValue ? (object)header.PurMaxPkno.Value : DBNull.Value));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurTotalQty", (object)(header.PurTotalQty ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurBillNo", (object)(header.PurBillNo ?? string.Empty)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurBillDate", header.PurBillDate.HasValue ? (object)header.PurBillDate.Value : DBNull.Value));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurChallanNo", (object)(header.PurChallanNo ?? string.Empty)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurChallanDate", header.PurChallanDate.HasValue ? (object)header.PurChallanDate.Value : DBNull.Value));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurId", (object)header.PurId));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurNetAmount", (object)(header.PurNetAmount ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurSalesmanId", (object)(header.PurSalesmanId ?? 0)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurRoundOff", (object)(header.PurRoundoff ?? 0m)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurCreditBill", (object)(header.PurCreditBill ?? false)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurExclusiveBill", (object)(header.PurExclusiveBill ?? false)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurOpeningStock", (object)(header.PurOpeningStock ?? false)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurEntryType", (object)(header.PurEntryType ?? 0)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurComments", (object)(header.PurComments ?? string.Empty)));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurVerify", (object)(header.PurVerify ?? false)));
+                
+                // SP Defaults
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurBrandId", (object)0L));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurCourierRequired", (object)false));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurCourierNo", (object)string.Empty));
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@PurCourierDelivered", (object)false));
+
+                // Create PurchaseDetailsType DataTable
+                var dtDetails = new System.Data.DataTable();
+                dtDetails.Columns.Add("PurtId", typeof(long));
+                dtDetails.Columns.Add("Purtsdocno", typeof(long));
+                dtDetails.Columns.Add("PurtOrderBy", typeof(long));
+                dtDetails.Columns.Add("PurtSize", typeof(string));
+                dtDetails.Columns.Add("PurtDebitQty", typeof(decimal));
+                dtDetails.Columns.Add("PurtCreditQty", typeof(decimal));
+                dtDetails.Columns.Add("PurtBarcodeId", typeof(long));
+                dtDetails.Columns.Add("PurtProductId", typeof(long));
+                dtDetails.Columns.Add("PurtColorID", typeof(long));
+                dtDetails.Columns.Add("PurtRecordCreated", typeof(DateTime));
+                dtDetails.Columns.Add("PurtRecordModified", typeof(DateTime));
+                dtDetails.Columns.Add("PurtPurchaseRate", typeof(decimal));
+                dtDetails.Columns.Add("PurtSelPrice", typeof(decimal));
+                dtDetails.Columns.Add("PurtMrp", typeof(decimal));
+                dtDetails.Columns.Add("PurtMaxPkno", typeof(long));
+                dtDetails.Columns.Add("PurtLocation", typeof(long));
+                dtDetails.Columns.Add("PurtHsnId", typeof(long));
+                dtDetails.Columns.Add("PurtTaxId", typeof(long));
+                dtDetails.Columns.Add("PurtTaxRate1", typeof(decimal));
+                dtDetails.Columns.Add("PurtTaxRate2", typeof(decimal));
+                dtDetails.Columns.Add("PurtDiscountPercent", typeof(decimal));
+                dtDetails.Columns.Add("PurtDiscAmount", typeof(decimal));
+                dtDetails.Columns.Add("PurtSizeId", typeof(long));
+                dtDetails.Columns.Add("PurtDebitAmount", typeof(decimal));
+                dtDetails.Columns.Add("PurtCreditAmount", typeof(decimal));
+                dtDetails.Columns.Add("PurtCostRate", typeof(decimal));
+                dtDetails.Columns.Add("PurtPerQty", typeof(decimal));
+                dtDetails.Columns.Add("PurtPerDiscount", typeof(decimal));
+                dtDetails.Columns.Add("PurtTaxAmount1", typeof(decimal));
+                dtDetails.Columns.Add("PurtTaxAmount2", typeof(decimal));
+                dtDetails.Columns.Add("PurtParentId", typeof(long));
+                dtDetails.Columns.Add("PurtParentDocno", typeof(long));
+                dtDetails.Columns.Add("PurtRate", typeof(decimal));
+                dtDetails.Columns.Add("PurtOrdtId", typeof(long));
+                dtDetails.Columns.Add("PurtRackNo", typeof(long));
+                dtDetails.Columns.Add("PurtDetailSDocno", typeof(int));
+                dtDetails.Columns.Add("PurtMiddleRate", typeof(decimal));
+                dtDetails.Columns.Add("PurtMiddleMrp", typeof(decimal));
+                dtDetails.Columns.Add("PurtMiddleSelPrice", typeof(decimal));
+                dtDetails.Columns.Add("PurtSizeFrom", typeof(string));
+                dtDetails.Columns.Add("PurtSizeTo", typeof(string));
+                dtDetails.Columns.Add("PurtSizeMiddle", typeof(string));
+                dtDetails.Columns.Add("PurtSelPriceDiscPercent", typeof(decimal));
+                dtDetails.Columns.Add("PurtRateDiff", typeof(decimal));
+                dtDetails.Columns.Add("PurtMrpDiff", typeof(decimal));
+                dtDetails.Columns.Add("PurtMarkDown", typeof(bool));
+                dtDetails.Columns.Add("PurtMarkDownPercent", typeof(decimal));
+                dtDetails.Columns.Add("PurtAlteration", typeof(bool));
+                dtDetails.Columns.Add("PurtSubSizeId", typeof(long));
+                dtDetails.Columns.Add("PurtDeliveryDate", typeof(DateTime));
+                dtDetails.Columns.Add("PurtSalesmanId", typeof(long));
+                dtDetails.Columns.Add("PurtRemarks", typeof(string));
+                dtDetails.Columns.Add("PurtSourcecode", typeof(string));
+                dtDetails.Columns.Add("PurtSalesmanPoints", typeof(decimal));
+                dtDetails.Columns.Add("PurtTotalSalesmanpoint", typeof(decimal));
+
+                foreach (var line in lines)
+                {
+                    dtDetails.Rows.Add(
+                        line.PurtId,
+                        line.Purtsdocno,
+                        line.PurtOrderBy,
+                        line.PurtSize ?? (object)DBNull.Value,
+                        line.PurtDebitQty ?? 0m,
+                        line.PurtCreditQty ?? 0m,
+                        line.PurtBarcodeId ?? (object)DBNull.Value,
+                        line.PurtProductId ?? (object)DBNull.Value,
+                        line.PurtColorId ?? (object)DBNull.Value,
+                        line.PurtRecordCreated ?? DateTime.UtcNow,
+                        line.PurtRecordModified ?? DateTime.UtcNow,
+                        line.PurtPurchaseRate ?? 0m,
+                        line.PurtSelPrice ?? 0m,
+                        line.PurtMrp ?? 0m,
+                        line.PurtMaxPkno ?? 0L,
+                        line.PurtLocation ?? (object)DBNull.Value,
+                        line.PurtHsnId ?? (object)DBNull.Value,
+                        line.PurtTaxId ?? (object)DBNull.Value,
+                        line.PurtTaxRate1 ?? 0m,
+                        line.PurtTaxRate2 ?? 0m,
+                        line.PurtDiscountPercent ?? 0m,
+                        line.PurtDiscAmount ?? 0m,
+                        line.PurtSizeId ?? 0L,
+                        line.PurtDebitAmount ?? 0m,
+                        line.PurtCreditAmount ?? 0m,
+                        line.PurtCostRate ?? 0m,
+                        line.PurtPerQty ?? 0m,
+                        line.PurtPerDiscount ?? 0m,
+                        line.PurtTaxAmount1 ?? 0m,
+                        line.PurtTaxAmount2 ?? 0m,
+                        line.PurtParentId ?? 0L,
+                        line.PurtParentDocno ?? 0L,
+                        line.PurtRate ?? 0m,
+                        line.PurtOrdtId ?? 0L,
+                        line.PurtRackNo ?? 0L,
+                        0, // PurtDetailSDocno default
+                        line.PurtMiddleRate ?? 0m,
+                        line.PurtMiddleMrp ?? 0m,
+                        line.PurtMiddleSelPrice ?? 0m,
+                        line.PurtSizeFrom ?? string.Empty,
+                        line.PurtSizeTo ?? string.Empty,
+                        line.PurtSizeMiddle ?? string.Empty,
+                        line.PurtSelPriceDiscPercent ?? 0m,
+                        line.PurtRateDiff ?? 0m,
+                        line.PurtMrpDiff ?? 0m,
+                        line.PurtMarkDown ?? false,
+                        line.PurtMarkDownPercent ?? 0m,
+                        line.PurtAlteration ?? false,
+                        line.PurtSubSizeId ?? 0L,
+                        line.PurtDeliveryDate ?? (object)DBNull.Value,
+                        line.PurtSalesmanId ?? 0L,
+                        line.PurtRemarks ?? (object)DBNull.Value,
+                        line.PurtSourcecode ?? (object)DBNull.Value,
+                        line.PurtSalesmanPoints ?? 0m,
+                        line.PurtTotalSalesmanpoint ?? 0m
+                    );
+                }
+
+                var pDetails = new Microsoft.Data.SqlClient.SqlParameter("@PurchaseDetails", dtDetails)
+                {
+                    SqlDbType = System.Data.SqlDbType.Structured,
+                    TypeName = "PurchaseDetailsType"
+                };
+                cmd.Parameters.Add(pDetails);
+
+                // Create PurchaseChargeType DataTable (empty)
+                var dtCharges = new System.Data.DataTable();
+                dtCharges.Columns.Add("PurcId", typeof(long));
+                dtCharges.Columns.Add("PurcChargeId", typeof(long));
+                dtCharges.Columns.Add("PurcChargeRate", typeof(decimal));
+                dtCharges.Columns.Add("PurcAmount", typeof(decimal));
+                dtCharges.Columns.Add("PurcTaxId", typeof(long));
+                dtCharges.Columns.Add("PurcTaxRate1", typeof(decimal));
+                dtCharges.Columns.Add("PurcTaxAmount1", typeof(decimal));
+                dtCharges.Columns.Add("PurcTaxRate2", typeof(decimal));
+                dtCharges.Columns.Add("PurcTaxAmount2", typeof(decimal));
+                dtCharges.Columns.Add("PurcRecordCreated", typeof(DateTime));
+                dtCharges.Columns.Add("PurcRecordModified", typeof(DateTime));
+                dtCharges.Columns.Add("PurcMaxPkno", typeof(long));
+                dtCharges.Columns.Add("PurcLocation", typeof(long));
+                dtCharges.Columns.Add("PurcHsnId", typeof(long));
+                dtCharges.Columns.Add("PurcReverseTaxAmount1", typeof(decimal));
+                dtCharges.Columns.Add("PurcReverseTaxAmount2", typeof(decimal));
+
+                var pCharges = new Microsoft.Data.SqlClient.SqlParameter("@PurchaseCharges", dtCharges)
+                {
+                    SqlDbType = System.Data.SqlDbType.Structured,
+                    TypeName = "PurchaseChargeType"
+                };
+                cmd.Parameters.Add(pCharges);
+
+                cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@OriginalTimeStampBigint", DBNull.Value));
+
+                var outNewTimestamp = new Microsoft.Data.SqlClient.SqlParameter("@NewTimeStampBigint", System.Data.SqlDbType.BigInt)
+                {
+                    Direction = System.Data.ParameterDirection.InputOutput,
+                    Value = 0L
+                };
+                cmd.Parameters.Add(outNewTimestamp);
+
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+        finally
+        {
+            if (!wasOpen && connection.State == System.Data.ConnectionState.Open)
+            {
+                connection.Close();
+            }
+        }
+    }
+}

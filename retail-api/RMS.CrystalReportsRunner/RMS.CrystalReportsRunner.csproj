@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x86</PlatformTarget>
+    <Prefer32Bit>true</Prefer32Bit>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+  <Target Name="CopyCrystal85Dlls" AfterTargets="Build">
+    <ItemGroup>
+      <CrystalDlls Include="C:\Users\sabhi\Downloads\CR8\CR8\Windows\Crystal\*.*" />
+      <SystemDlls Include="C:\Users\sabhi\Downloads\CR8\CR8\Windows\System32\*.*" />
+      <EngineDlls Include="C:\Users\sabhi\Downloads\CR8\CR8\Windows\System32\INSTAL~1\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(CrystalDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(SystemDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(EngineDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

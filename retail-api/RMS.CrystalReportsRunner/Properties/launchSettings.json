@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "RMS.CrystalReportsRunner": {
+      "commandName": "Project",
+      "commandLineArgs": "10138743 \"C:\\Users\\sabhi\\Downloads\\Sales-Bill.rpt\" \"C:\\Users\\sabhi\\AppData\\Local\\Temp\\debug-test.pdf\" \"Server=STATICABHI;Database=Parichay;Trusted_Connection=True;TrustServerCertificate=True\"\r\n"
+    }
+  }
+}

@@ -9,25 +9,35 @@ using Microsoft.IdentityModel.Tokens;
 using RMS.Application.DTOs;
 using RMS.Application.Interfaces;
 
+using Microsoft.Extensions.DependencyInjection;
+
 namespace RMS.Application.Services;
 
 public class AuthService : IAuthService
 {
-    private readonly IApplicationDbContext _context;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ITenantProvider _tenantProvider;
     private readonly IConfiguration _configuration;
+    private readonly ITenantAuthenticationService _tenantAuthService;
 
-    public AuthService(IApplicationDbContext context, IConfiguration configuration)
+    public AuthService(
+        IServiceProvider serviceProvider, 
+        ITenantProvider tenantProvider, 
+        IConfiguration configuration,
+        ITenantAuthenticationService tenantAuthService)
     {
-        _context = context;
+        _serviceProvider = serviceProvider;
+        _tenantProvider = tenantProvider;
         _configuration = configuration;
+        _tenantAuthService = tenantAuthService;
     }
 
     public async Task<AuthResponse> LoginAsync(AuthRequest request)
     {
-        // 1. Authenticate against database (MasterUser) by Email first
-        var user = await _context.MasterUsers.FirstOrDefaultAsync(u => u.UserName == request.Email);
+        // 1. Look up the tenant connection mapping in Master DB by user's email/username
+        var tenantInfo = await _tenantAuthService.GetTenantByUserIdAsync(request.Email);
 
-        if (user == null)
+        if (tenantInfo == null)
         {
             return new AuthResponse
             {
@@ -36,8 +46,8 @@ public class AuthService : IAuthService
             };
         }
 
-        // Verify the password using the legacy encryption logic
-        bool isPasswordValid = VerifyLegacyPassword(request.Password, user.UserPassword);
+        // 2. Verify the password against the master database credentials
+        bool isPasswordValid = VerifyLegacyPassword(request.Password, tenantInfo.UserPassword);
 
         if (!isPasswordValid)
         {
@@ -48,10 +58,20 @@ public class AuthService : IAuthService
             };
         }
 
-        // 2. Generate JWT Token
+        // 3. Set tenant override in TenantProvider before resolving tenant DbContext
+        _tenantProvider.SetTenantOverride(tenantInfo.ClientId);
+
+        var context = _serviceProvider.GetRequiredService<IApplicationDbContext>();
+
+        // 4. Resolve the tenant user for role assignments, permissions, and profile details
+        var tenantUser = await context.MasterUsers.FirstOrDefaultAsync(u => u.UserName == request.Email);
+        
+        long userId = tenantUser?.UserId ?? 0;
+        string userName = tenantUser?.UserName ?? request.Email;
+
+        // 5. Generate JWT Token with client_id claim
         var tokenHandler = new JwtSecurityTokenHandler();
         
-        // In a real application, keep this secret safe in appsettings.json or environment variables
         var secretKey = _configuration["JwtSettings:Secret"] ?? "super-secret-key-that-should-be-very-long-and-secure-1234567890"; 
         var key = Encoding.ASCII.GetBytes(secretKey);
         
@@ -59,9 +79,10 @@ public class AuthService : IAuthService
         {
             Subject = new ClaimsIdentity(new[]
             {
-                new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
-                new Claim(ClaimTypes.Name, user.UserName ?? "User"),
-                new Claim(ClaimTypes.Email, request.Email)
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+                new Claim(ClaimTypes.Name, userName),
+                new Claim(ClaimTypes.Email, request.Email),
+                new Claim("client_id", tenantInfo.ClientId)
             }),
             Expires = DateTime.UtcNow.AddDays(7),
             SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature),
@@ -74,13 +95,13 @@ public class AuthService : IAuthService
 
         // Fetch active Company Profile based on login date
         var loginDate = request.LoginDate?.Date ?? DateTime.Today;
-        var company = await _context.CompanyProfiles.FirstOrDefaultAsync(c => 
+        var company = await context.CompanyProfiles.FirstOrDefaultAsync(c => 
                             c.CompanyFinFromDate.HasValue && 
                             c.CompanyFinToDate.HasValue && 
                             loginDate >= c.CompanyFinFromDate.Value && 
                             loginDate <= c.CompanyFinToDate.Value)
-                      ?? await _context.CompanyProfiles.FirstOrDefaultAsync(c => c.IsMainCompany == true) 
-                      ?? await _context.CompanyProfiles.FirstOrDefaultAsync();
+                      ?? await context.CompanyProfiles.FirstOrDefaultAsync(c => c.IsMainCompany == true) 
+                      ?? await context.CompanyProfiles.FirstOrDefaultAsync();
 
         long companyId = company?.CompanyId ?? 1;
         string companyName = company?.CompanyName ?? "Default Company";
@@ -92,8 +113,8 @@ public class AuthService : IAuthService
         {
             Success = true,
             Token = jwtToken,
-            UserId = user.UserId,
-            UserName = user.UserName ?? "User",
+            UserId = userId,
+            UserName = userName,
             CompanyId = companyId,
             CompanyName = companyName,
             CompanyCount = companyCount,

@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using RMS.Application.Interfaces;
 using RMS.Application.Services;
 using RMS.Infrastructure.Data;
+using RMS.Infrastructure.Services;
 using RMS.Infrastructure.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,17 +14,36 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
-// Configure Database Context
-var connectionString = "Server=STATICABHI;Database=Parichay;Trusted_Connection=True;TrustServerCertificate=True";
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString, o => o
+// Configure Infrastructure Services
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddMemoryCache();
+
+// Register Master Database Context
+var masterConnectionString = builder.Configuration.GetConnectionString("MasterConnection") 
+    ?? "Server=STATICABHI;Database=RMS_Master;Trusted_Connection=True;TrustServerCertificate=True";
+builder.Services.AddDbContext<MasterDbContext>(options =>
+    options.UseSqlServer(masterConnectionString));
+
+// Register Multi-Tenant Services
+builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
+builder.Services.AddScoped<ITenantProvider, TenantProvider>();
+builder.Services.AddScoped<ITenantAuthenticationService, TenantAuthenticationService>();
+
+// Configure Dynamic Tenant Database Context
+builder.Services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
+{
+    var tenantProvider = serviceProvider.GetRequiredService<ITenantProvider>();
+    var connStr = tenantProvider.GetConnectionString();
+    options.UseSqlServer(connStr, o => o
         .UseCompatibilityLevel(120)
-        .CommandTimeout(60)));
+        .CommandTimeout(60));
+});
 
 // Register Application Services
 builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ProductRepository>();
+builder.Services.AddScoped<ICrystalReportService, CrystalReportService>();
 
 // Configure JWT Authentication
 var secretKey = builder.Configuration["JwtSettings:Secret"] ?? "super-secret-key-that-should-be-very-long-and-secure-1234567890";

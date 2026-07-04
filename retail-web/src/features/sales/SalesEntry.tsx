@@ -30,13 +30,16 @@ import {
   ChevronDown,
   ChevronUp,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Printer,
+  Loader2
 } from 'lucide-react';
 import { InfoBadge } from '../../components/ui/InfoBadge';
 import { useSalesLogic } from './useSalesLogic';
 import { LoadInvoiceModal } from './components/LoadInvoiceModal';
 import { SettlePaymentPanel } from './components/SettlePaymentPanel';
 import { SalesPopupNotification } from './components/SalesPopupNotification';
+import { ReportSelectionModal } from './components/ReportSelectionModal';
 
 const SalesEntry: React.FC = () => {
   const customerNameInputRef = React.useRef<HTMLInputElement>(null);
@@ -92,6 +95,7 @@ const SalesEntry: React.FC = () => {
     handleNewSale,
     handleLoadInvoice,
     handleSaveInvoice,
+    handlePreviewInvoice,
     handleCompleteSale,
     handleCustomerSelect,
     handleMobileChange,
@@ -130,7 +134,13 @@ const SalesEntry: React.FC = () => {
     isCredit,
     setIsCredit,
     saveToBackend,
-    paymentTypes
+    paymentTypes,
+    customReports,
+    isReportModalOpen,
+    setIsReportModalOpen,
+    handleSelectReport,
+    loadingReportNo,
+    isPreviewLoading
   } = useSalesLogic();
 
   React.useEffect(() => {
@@ -417,6 +427,16 @@ const SalesEntry: React.FC = () => {
           <PauseCircle className="w-4 h-4" /> <span>{isSaving ? 'Saving...' : 'Save as Draft'}</span>
         </button>
       )}
+
+      <button
+        onClick={handlePreviewInvoice}
+        disabled={items.length === 0 || isSaving || isPreviewLoading}
+        className={`px-3.5 py-1.5 bg-cyan-50 dark:bg-cyan-500/10 hover:bg-cyan-100 dark:hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 rounded-xl border border-cyan-200 dark:border-cyan-500/30 text-[12px] font-[1000] flex items-center gap-2 transition-all shadow-sm active:scale-95 whitespace-nowrap ${items.length === 0 || isSaving || isPreviewLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+        title="Preview Report"
+      >
+        {isPreviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+        <span>{isPreviewLoading ? 'Loading...' : 'Preview'}</span>
+      </button>
     </div>
   );
 
@@ -2196,6 +2216,14 @@ const SalesEntry: React.FC = () => {
         </AnimatePresence>,
         document.body
       )}
+
+      <ReportSelectionModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        reports={customReports}
+        onSelectReport={handleSelectReport}
+        loadingReportNo={loadingReportNo}
+      />
     </div>
   );
 };
