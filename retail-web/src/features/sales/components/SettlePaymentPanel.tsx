@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, X, CheckCircle2, CreditCard } from 'lucide-react';
+import { ShoppingCart, X, CheckCircle2, CreditCard, Settings, Search } from 'lucide-react';
 
 interface PaymentType {
   id: number;
@@ -17,6 +17,13 @@ interface SettlePaymentPanelProps {
   isSaving: boolean;
   isCredit: boolean;
   setIsCredit: (val: boolean) => void;
+  isCNoteAdjust?: boolean;
+  availableCreditNotes?: any[];
+  selectedCreditNotes?: Record<number, number>;
+  setSelectedCreditNotes?: React.Dispatch<React.SetStateAction<Record<number, number>>>;
+  isLoadingCreditNotes?: boolean;
+  handleSelectCreditNote?: (purId: number, adjustAmount: number, checked: boolean) => void;
+  handleUpdateCreditNoteAmount?: (purId: number, amount: number) => void;
 }
 
 export const SettlePaymentPanel: React.FC<SettlePaymentPanelProps> = ({
@@ -29,15 +36,93 @@ export const SettlePaymentPanel: React.FC<SettlePaymentPanelProps> = ({
   saveToBackend,
   isSaving,
   isCredit,
-  setIsCredit
+  setIsCredit,
+  isCNoteAdjust = false,
+  availableCreditNotes = [],
+  selectedCreditNotes = {},
+  setSelectedCreditNotes = () => {},
+  handleSelectCreditNote = () => {},
+  handleUpdateCreditNoteAmount = () => {}
 }) => {
   const isReadOnly = formMode === 'LOCKED' || formMode === 'VIEW';
+
+  const [isCNoteModalOpen, setIsCNoteModalOpen] = useState(false);
+  const [cNoteSearch, setCNoteSearch] = useState('');
+
+  const handleSelectAllCreditNotes = (select: boolean) => {
+    if (isReadOnly) return;
+    const cNoteType = paymentTypes.find(t => {
+      const name = t.name.toLowerCase();
+      return name.includes('creditnote') || name.includes('credit note') || name.includes('cnote');
+    });
+
+    if (select) {
+      const nextSelected: Record<number, number> = {};
+      const currentPaidExcludingCNote = visiblePaymentTypes
+        .filter(pt => cNoteType ? pt.id !== cNoteType.id : true)
+        .reduce((sum, pt) => sum + (paymentAmounts[pt.id] || 0), 0);
+      let remainingToPay = netPayable - currentPaidExcludingCNote;
+      
+      availableCreditNotes.forEach(cn => {
+        const maxAvailable = cn.remainingAmount;
+        const defaultAdjust = Math.min(maxAvailable, Math.max(0, remainingToPay));
+        nextSelected[cn.purId] = Number(defaultAdjust.toFixed(2));
+        remainingToPay -= nextSelected[cn.purId];
+      });
+
+      setSelectedCreditNotes(nextSelected);
+
+      const totalAdjusted = Object.values(nextSelected).reduce((sum, val) => sum + val, 0);
+      if (cNoteType) {
+        setPaymentAmounts(prev => ({
+          ...prev,
+          [cNoteType.id]: totalAdjusted
+        }));
+      }
+    } else {
+      setSelectedCreditNotes({});
+      if (cNoteType) {
+        setPaymentAmounts(prev => ({
+          ...prev,
+          [cNoteType.id]: 0
+        }));
+      }
+    }
+  };
+
+  const filteredList = (() => {
+    const displayList = [...availableCreditNotes];
+    Object.keys(selectedCreditNotes).forEach(key => {
+      const purId = Number(key);
+      if (!displayList.some(cn => cn.purId === purId)) {
+        displayList.push({
+          purId,
+          purDocno: `${purId}`,
+          purDocDate: '',
+          remainingAmount: selectedCreditNotes[purId]
+        });
+      }
+    });
+
+    if (!cNoteSearch.trim()) return displayList;
+    const query = cNoteSearch.toLowerCase().trim();
+    return displayList.filter(cn => {
+      const docnoMatch = cn.purDocno.toString().toLowerCase().includes(query);
+      const dateMatch = cn.purDocDate 
+        ? new Date(cn.purDocDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toLowerCase().includes(query)
+        : false;
+      return docnoMatch || dateMatch;
+    });
+  })();
 
   const rawTypes = paymentTypes && paymentTypes.length > 0 ? paymentTypes : [];
 
   const visiblePaymentTypes = rawTypes.filter(pt => {
     const name = pt.name.toLowerCase();
-    return name !== 'debitnote' && name !== 'discount' && name !== 'creditnote';
+    if (name === 'creditnote' || name === 'credit note' || name === 'cnote') {
+      return isCNoteAdjust;
+    }
+    return name !== 'debitnote' && name !== 'discount';
   });
 
   const [activePaymentModes, setActivePaymentModes] = useState<number[]>([]);
@@ -104,6 +189,11 @@ export const SettlePaymentPanel: React.FC<SettlePaymentPanelProps> = ({
       activeStyle = 'border-blue-200/20 bg-blue-50/50 dark:bg-blue-950/10';
       badgeStyle = 'bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/40 dark:border-blue-500/30 dark:text-blue-400 shadow-blue-500/10';
       placeholder = 'Future Cheque/UTR Number...';
+    } else if (name.includes('creditnote') || name.includes('credit note') || name.includes('cnote')) {
+      color = 'text-fuchsia-500 dark:text-fuchsia-400';
+      activeStyle = 'border-fuchsia-200/20 bg-fuchsia-50/50 dark:bg-fuchsia-950/10';
+      badgeStyle = 'bg-fuchsia-50 border-fuchsia-300 text-fuchsia-700 dark:bg-fuchsia-950/40 dark:border-fuchsia-500/30 dark:text-fuchsia-400 shadow-fuchsia-500/10';
+      placeholder = 'Credit Note Adjustment...';
     }
 
     return {
@@ -123,7 +213,22 @@ export const SettlePaymentPanel: React.FC<SettlePaymentPanelProps> = ({
     };
   });
 
-  const totalPaid = visiblePaymentTypes.reduce((sum, pt) => sum + (paymentAmounts[pt.id] || 0), 0);
+// Credit note mode info and auto-activate effect
+const cNoteModeInfo = paymentModesInfo.find(m => {
+  const lbl = m.label.toLowerCase();
+  return lbl.includes('creditnote') || lbl.includes('credit note') || lbl === 'cnote';
+});
+useEffect(() => {
+  if (cNoteModeInfo && paymentAmounts[cNoteModeInfo.id] && paymentAmounts[cNoteModeInfo.id] > 0) {
+    if (!activePaymentModes.includes(cNoteModeInfo.id)) {
+      setActivePaymentModes(prev => [...prev, cNoteModeInfo.id]);
+    }
+  } else if (cNoteModeInfo && (!paymentAmounts[cNoteModeInfo.id] || paymentAmounts[cNoteModeInfo.id] === 0)) {
+    setActivePaymentModes(prev => prev.filter(id => id !== cNoteModeInfo.id));
+  }
+}, [paymentAmounts, cNoteModeInfo, activePaymentModes]);
+
+const totalPaid = visiblePaymentTypes.reduce((sum, pt) => sum + (paymentAmounts[pt.id] || 0), 0);
   const remaining = Math.max(0, netPayable - totalPaid);
   const isPaymentValid = isCredit
     ? (totalPaid <= netPayable + 0.01)
@@ -304,7 +409,7 @@ export const SettlePaymentPanel: React.FC<SettlePaymentPanelProps> = ({
           const rem = netPayable - totalPaid;
           return (
             <div key={mode.id} className={`flex flex-col gap-3 p-4 border rounded-2xl transition-all ${mode.activeStyle}`}>
-              <div className="flex justify-between items-center">
+              {/* Credit note auto-activate effect moved to top-level */}
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${mode.color} bg-current`}></span>
                   <span className={`text-[12px] font-black tracking-tight ${mode.color}`}>{mode.label}</span>
@@ -344,38 +449,55 @@ export const SettlePaymentPanel: React.FC<SettlePaymentPanelProps> = ({
                     </button>
                   )}
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[12px] font-bold text-slate-400">₹</span>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0.00"
-                    readOnly={isReadOnly}
-                    value={mode.value || ''}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => {
-                      if (isReadOnly) return;
-                      const val = parseFloat(e.target.value);
-                      const cleanedVal = isNaN(val) ? 0 : val;
-                      adjustAmountsOnChange(mode.id, cleanedVal);
-                    }}
-                    className={`w-full border rounded-xl pl-7 pr-3 py-1.5 text-[13px] font-[1000] focus:outline-none focus:ring-2 text-right shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-black dark:text-white ${isReadOnly ? 'bg-slate-50 dark:bg-white/[0.01] cursor-not-allowed border-slate-100 dark:border-white/[0.05] focus:ring-0 focus:border-slate-100' : 'bg-white dark:bg-[#151518] border-slate-200 dark:border-white/[0.1] focus:border-indigo-500 focus:ring-indigo-500/20'}`}
-                  />
-                </div>
+              {(() => {
+                const isCNote = mode.label.toLowerCase().includes('creditnote') || mode.label.toLowerCase().includes('credit note') || mode.label.toLowerCase() === 'cnote';
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-center">
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[12px] font-bold text-slate-400">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0.00"
+                          readOnly={isReadOnly || isCNote}
+                          value={mode.value || ''}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            if (isReadOnly) return;
+                            const val = parseFloat(e.target.value);
+                            const cleanedVal = isNaN(val) ? 0 : val;
+                            adjustAmountsOnChange(mode.id, cleanedVal);
+                          }}
+                          className={`w-full border rounded-xl pl-7 pr-3 py-1.5 text-[13px] font-[1000] focus:outline-none focus:ring-2 text-right shadow-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none text-black dark:text-white ${isReadOnly || isCNote ? 'bg-slate-50 dark:bg-white/[0.01] cursor-not-allowed border-slate-100 dark:border-white/[0.05] focus:ring-0 focus:border-slate-100' : 'bg-white dark:bg-[#151518] border-slate-200 dark:border-white/[0.1] focus:border-indigo-500 focus:ring-indigo-500/20'}`}
+                        />
+                      </div>
 
-                {/* Future reference / detail field placeholder */}
-                <div className="relative">
-                  <input
-                    type="text"
-                    disabled
-                    placeholder={mode.placeholder}
-                    className="w-full bg-slate-50/50 dark:bg-white/[0.01] border border-slate-100 dark:border-white/[0.05] rounded-xl px-3 py-1.5 text-[11px] font-medium text-slate-400 dark:text-white/20 outline-none cursor-not-allowed select-none italic"
-                  />
-                </div>
-              </div>
+                      {/* Future reference / detail field placeholder */}
+                      <div className="relative">
+                        {isCNote ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsCNoteModalOpen(true)}
+                            className="w-full bg-fuchsia-50 hover:bg-fuchsia-100 dark:bg-fuchsia-500/10 dark:hover:bg-fuchsia-500/20 border border-fuchsia-200 dark:border-fuchsia-500/30 rounded-xl px-3 py-1.5 text-[11.5px] font-[1000] text-fuchsia-700 dark:text-fuchsia-300 transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <Settings className="w-3.5 h-3.5" />
+                            Adjust Credit Notes
+                          </button>
+                        ) : (
+                          <input
+                            type="text"
+                            disabled
+                            placeholder={mode.placeholder}
+                            className="w-full bg-slate-50/50 dark:bg-white/[0.01] border border-slate-100 dark:border-white/[0.05] rounded-xl px-3 py-1.5 text-[11px] font-medium text-slate-400 dark:text-white/20 outline-none cursor-not-allowed select-none italic"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -407,6 +529,182 @@ export const SettlePaymentPanel: React.FC<SettlePaymentPanelProps> = ({
           </button>
         )}
       </div>
+
+      {isCNoteModalOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white dark:bg-[#151518] border border-slate-200 dark:border-white/[0.1] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-100 dark:border-white/[0.08] flex items-center justify-between bg-slate-50 dark:bg-white/[0.01]">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-fuchsia-500 animate-pulse"></div>
+                <h3 className="text-[13px] font-[1000] text-gray-900 dark:text-white uppercase tracking-wider">
+                  Adjust Return Credit Notes
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCNoteModalOpen(false)}
+                className="p-1 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg text-slate-400 dark:text-slate-400 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-4">
+              {/* Search Bar & Bulk Actions */}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by Doc No or Date..."
+                    value={cNoteSearch}
+                    onChange={(e) => setCNoteSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-[#121215] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[12px] font-black text-black dark:text-white focus:outline-none focus:border-fuchsia-500"
+                  />
+                </div>
+                {!isReadOnly && (
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAllCreditNotes(true)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.05] dark:hover:bg-white/[0.1] border border-slate-200 dark:border-white/[0.08] rounded-xl text-[11px] font-black text-slate-700 dark:text-slate-300"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAllCreditNotes(false)}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.05] dark:hover:bg-white/[0.1] border border-slate-200 dark:border-white/[0.08] rounded-xl text-[11px] font-black text-slate-700 dark:text-slate-300"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Document List */}
+              <div className="space-y-2">
+                {filteredList.length === 0 ? (
+                  <div className="text-center py-8 text-[12px] font-bold text-slate-450">
+                    No matching credit notes found.
+                  </div>
+                ) : (
+                  <div className="border border-slate-150 dark:border-white/[0.08] rounded-xl overflow-hidden divide-y divide-slate-150 dark:divide-white/[0.08]">
+                    {filteredList.map((cn) => {
+                      const isChecked = selectedCreditNotes[cn.purId] !== undefined;
+                      const currentVal = selectedCreditNotes[cn.purId] || 0;
+                      const maxAvailable = cn.remainingAmount;
+
+                      return (
+                        <div
+                          key={cn.purId}
+                          className={`flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors gap-3 ${
+                            isChecked ? 'bg-fuchsia-500/[0.02]' : ''
+                          }`}
+                        >
+                          <label className="flex items-center gap-3 cursor-pointer select-none min-w-0">
+                            <input
+                              type="checkbox"
+                              disabled={isReadOnly}
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (isReadOnly) return;
+                                const defaultAdjust = Math.min(maxAvailable, Math.max(0, netPayable - (totalPaid - currentVal)));
+                                handleSelectCreditNote(cn.purId, Number(defaultAdjust.toFixed(2)), e.target.checked);
+                              }}
+                              className="w-4.5 h-4.5 rounded text-fuchsia-600 focus:ring-fuchsia-500 border-gray-300 dark:border-white/15 dark:bg-white/5"
+                            />
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-[12px] font-black text-slate-800 dark:text-white truncate">
+                                Doc No: #{cn.purDocno}
+                              </span>
+                              <span className="text-[10px] font-bold text-slate-400">
+                                {cn.purDocDate
+                                  ? new Date(cn.purDocDate).toLocaleDateString('en-GB', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      year: 'numeric'
+                                    })
+                                  : 'Saved Adjustment'}
+                              </span>
+                            </div>
+                          </label>
+
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <span className="text-[9px] font-black text-slate-400 block uppercase tracking-wider">
+                                Available
+                              </span>
+                              <span className="text-[12px] font-black text-slate-700 dark:text-slate-350">
+                                ₹{cn.remainingAmount.toLocaleString()}
+                              </span>
+                            </div>
+                            {isChecked && (
+                              <div className="relative w-24">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
+                                  ₹
+                                </span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={maxAvailable}
+                                  readOnly={isReadOnly}
+                                  value={currentVal || ''}
+                                  onFocus={(e) => e.target.select()}
+                                  onChange={(e) => {
+                                    if (isReadOnly) return;
+                                    const val = parseFloat(e.target.value);
+                                    const cleanedVal = isNaN(val) ? 0 : val;
+                                    handleUpdateCreditNoteAmount(cn.purId, cleanedVal);
+                                  }}
+                                  className="w-full border border-slate-200 dark:border-white/[0.1] rounded-lg pl-5 pr-2 py-0.5 text-[11px] font-black text-right focus:outline-none focus:border-fuchsia-500 text-black dark:text-white dark:bg-[#151518]"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.01] flex items-center justify-between">
+              <div className="text-left">
+                <span className="text-[9px] font-black text-slate-400 block uppercase tracking-wider">
+                  Total Selected Sum
+                </span>
+                <span className="text-[14px] font-[1000] text-fuchsia-600 dark:text-fuchsia-400">
+                  ₹{Object.values(selectedCreditNotes).reduce((a, b) => a + b, 0).toFixed(2)}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  // Sync the total selected credit note amount into the CreditNote payment field
+                  // and let adjustAmountsOnChange redistribute the remainder to other modes (e.g. Cash)
+                  const total = Object.values(selectedCreditNotes).reduce((a, b) => a + b, 0);
+                  const cNoteType = visiblePaymentTypes.find(pt => {
+                    const n = pt.name.toLowerCase();
+                    return n.includes('creditnote') || n.includes('credit note') || n === 'cnote';
+                  });
+                  if (cNoteType) {
+                    adjustAmountsOnChange(cNoteType.id, Number(total.toFixed(2)));
+                  }
+                  setIsCNoteModalOpen(false);
+                }}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[12px] font-black shadow-lg shadow-indigo-600/20"
+              >
+                Apply Selection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

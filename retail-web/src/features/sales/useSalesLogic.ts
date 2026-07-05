@@ -125,7 +125,7 @@ export const useSalesLogic = () => {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [loadingReportNo, setLoadingReportNo] = useState<number | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
-  
+
   // Abort controller ref for report preview
   const previewAbortControllerRef = useRef<AbortController | null>(null);
   const [currentPurId, setCurrentPurId] = useState<number | null>(null);
@@ -135,6 +135,11 @@ export const useSalesLogic = () => {
   const [paymentAmounts, setPaymentAmounts] = useState<Record<number, number>>({});
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isCredit, setIsCredit] = useState(false);
+
+  const [isCNoteAdjust, setIsCNoteAdjust] = useState(false);
+  const [availableCreditNotes, setAvailableCreditNotes] = useState<any[]>([]);
+  const [selectedCreditNotes, setSelectedCreditNotes] = useState<Record<number, number>>({});
+  const [isLoadingCreditNotes, setIsLoadingCreditNotes] = useState(false);
 
   // Salesman states
   const [purSalesmanId, setPurSalesmanId] = useState<number | null>(null);
@@ -155,6 +160,89 @@ export const useSalesLogic = () => {
       console.error("Failed to fetch payment types:", err);
     }
   }, []);
+
+  const cNoteType = paymentTypes.find(t => {
+    const name = t.name.toLowerCase();
+    return name.includes('creditnote') || name.includes('credit note') || name.includes('cnote');
+  });
+  console.log("cNoteType determined in useSalesLogic:", cNoteType, "from paymentTypes:", paymentTypes);
+
+  const fetchAvailableCreditNotes = useCallback(async () => {
+    if (!mobileNumber) {
+      setAvailableCreditNotes([]);
+      return;
+    }
+    setIsLoadingCreditNotes(true);
+    try {
+      const currentId = currentPurId || 0;
+      const res = await authFetch(`${API_BASE_URL}/sales/available-credit-notes?mobileNumber=${encodeURIComponent(mobileNumber)}&excludePurId=${currentId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableCreditNotes(data);
+      } else {
+        setAvailableCreditNotes([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch available credit notes:", err);
+      setAvailableCreditNotes([]);
+    } finally {
+      setIsLoadingCreditNotes(false);
+    }
+  }, [mobileNumber, currentPurId, authFetch]);
+
+  useEffect(() => {
+    if (isCNoteAdjust) {
+      fetchAvailableCreditNotes();
+    } else {
+      setAvailableCreditNotes([]);
+      setSelectedCreditNotes({});
+    }
+  }, [isCNoteAdjust, fetchAvailableCreditNotes]);
+
+  const handleSelectCreditNote = (purId: number, adjustAmount: number, checked: boolean) => {
+    const nextSelected = { ...selectedCreditNotes };
+    if (checked) {
+      nextSelected[purId] = adjustAmount;
+    } else {
+      delete nextSelected[purId];
+    }
+    setSelectedCreditNotes(nextSelected);
+
+    const totalAdjusted = Object.values(nextSelected).reduce((sum, val) => sum + val, 0);
+    console.log("handleSelectCreditNote called. Selected:", nextSelected, "totalAdjusted:", totalAdjusted, "cNoteType:", cNoteType);
+    if (cNoteType) {
+      setPaymentAmounts(prev => {
+        const updated = {
+          ...prev,
+          [cNoteType.id]: totalAdjusted
+        };
+        console.log("Setting payment amounts to:", updated);
+        return updated;
+      });
+    }
+  };
+
+  const handleUpdateCreditNoteAmount = (purId: number, amount: number) => {
+    const nextSelected = { ...selectedCreditNotes };
+    if (nextSelected[purId] !== undefined) {
+      nextSelected[purId] = amount;
+      setSelectedCreditNotes(nextSelected);
+
+      const totalAdjusted = Object.values(nextSelected).reduce((sum, val) => sum + val, 0);
+      console.log("handleUpdateCreditNoteAmount called. Selected:", nextSelected, "totalAdjusted:", totalAdjusted, "cNoteType:", cNoteType);
+      if (cNoteType) {
+        setPaymentAmounts(prev => {
+          const updated = {
+            ...prev,
+            [cNoteType.id]: totalAdjusted
+          };
+          console.log("Setting payment amounts to:", updated);
+          return updated;
+        });
+      }
+    }
+  };
+
 
   const fetchSalesmen = useCallback(async () => {
     try {
@@ -349,6 +437,9 @@ export const useSalesLogic = () => {
     setPaymentAmounts({});
     setIsPaymentModalOpen(false);
     setIsCredit(false);
+    setIsCNoteAdjust(false);
+    setSelectedCreditNotes({});
+    setAvailableCreditNotes([]);
   }, [fetchNextDocNo]);
 
   const performLoadInvoice = useCallback(async (inv: SavedInvoice) => {
@@ -386,6 +477,15 @@ export const useSalesLogic = () => {
         setPaymentAmounts(loadedAmounts);
         setIsPaymentModalOpen(false);
         setIsCredit(data.purCreditBill || data.PurCreditBill || false);
+
+        // Load credit note adjustments
+        const loadedAdjustments: Record<number, number> = {};
+        const adjs = data.creditNoteAdjustments || data.CreditNoteAdjustments || [];
+        adjs.forEach((a: any) => {
+          loadedAdjustments[a.purId] = a.purAdjustAmount;
+        });
+        setSelectedCreditNotes(loadedAdjustments);
+        setIsCNoteAdjust(adjs.length > 0);
         const rawItems = data.items || data.Items || [];
         const loadedItems: LineItem[] = rawItems.map((i: any) => {
           const sPrice = i.selPrice || i.SelPrice || 0;
@@ -492,6 +592,10 @@ export const useSalesLogic = () => {
       purDiscountPercent: globalDiscountPercent,
       remarks: remarks,
       purCreditBill: isCredit,
+      creditNoteAdjustments: Object.entries(selectedCreditNotes).map(([purId, amt]) => ({
+        purId: Number(purId),
+        purAdjustAmount: amt
+      })),
       payments: paymentTypes.map(t => ({
         paymentTypeId: t.id,
         paymentTypeName: t.name,
@@ -577,7 +681,7 @@ export const useSalesLogic = () => {
       setIsSaving(false);
     }
     return null;
-  }, [currentPurId, companyId, companyCount, docNo, docDate, customerName, mobileNumber, purSalesmanId, items, fetchHistory, performLoadInvoice, paymentAmounts, paymentTypes]);
+  }, [currentPurId, companyId, companyCount, docNo, docDate, customerName, mobileNumber, purSalesmanId, items, fetchHistory, performLoadInvoice, paymentAmounts, paymentTypes, selectedCreditNotes]);
 
   const handleNewSale = useCallback(() => {
     if ((formMode === 'NEW' || formMode === 'EDIT') && items.length > 0) {
@@ -675,7 +779,7 @@ export const useSalesLogic = () => {
 
       const reportPath = `${report.repPathName}\\${report.rctFileName}`;
       const url = `${API_BASE_URL}/sales/report/preview/${purIdToPreview}?reportPath=${encodeURIComponent(reportPath)}`;
-      
+
       setLoadingReportNo(report.rctNo);
 
       try {
@@ -749,7 +853,7 @@ export const useSalesLogic = () => {
 
       const report = customReports[0];
       const reportPath = report ? `${report.repPathName}\\${report.rctFileName}` : '';
-      const url = reportPath 
+      const url = reportPath
         ? `${API_BASE_URL}/sales/report/preview/${purIdToPreview}?reportPath=${encodeURIComponent(reportPath)}`
         : `${API_BASE_URL}/sales/report/preview/${purIdToPreview}`;
 
@@ -834,6 +938,35 @@ export const useSalesLogic = () => {
         }
         handleCompleteSale();
       }
+      // Alt key shortcuts
+      if (e.altKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'e') {
+          e.preventDefault();
+          if (formMode === 'VIEW') {
+            setFormMode('EDIT');
+          }
+        }
+        if (key === 's') {
+          e.preventDefault();
+          if (items.length === 0) {
+            setPopup({
+              isOpen: true,
+              type: 'warning',
+              title: 'Empty Cart',
+              message: 'Cannot save because there are no items in the cart.',
+              subMessage: 'Please scan or add at least one product.'
+            });
+            return;
+          }
+          handleSaveInvoice();
+        }
+        if (key === 'n') {
+          e.preventDefault();
+          handleNewSale();
+        }
+      }
+
       if (e.key === 'F12') {
         e.preventDefault();
         if (items.length === 0) {
@@ -846,12 +979,16 @@ export const useSalesLogic = () => {
           });
           return;
         }
-        handleSaveInvoice();
+        if (formMode === 'EDIT') {
+          handlePreviewInvoice();
+        } else {
+          handleSaveInvoice();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNewSale, handleCompleteSale, handleSaveInvoice, isSaving, items.length]);
+  }, [handleNewSale, handleCompleteSale, handleSaveInvoice, handlePreviewInvoice, formMode, setFormMode, isSaving, items.length]);
 
   // State for Layout Toggle
   const [viewMode, setViewMode] = useState<'modern' | 'classic'>('classic');
@@ -1543,6 +1680,14 @@ export const useSalesLogic = () => {
     setIsPaymentModalOpen,
     isCredit,
     setIsCredit,
+    isCNoteAdjust,
+    setIsCNoteAdjust,
+    availableCreditNotes,
+    selectedCreditNotes,
+    setSelectedCreditNotes,
+    isLoadingCreditNotes,
+    handleSelectCreditNote,
+    handleUpdateCreditNoteAmount,
     paymentTypes,
     customReports,
     isReportModalOpen,

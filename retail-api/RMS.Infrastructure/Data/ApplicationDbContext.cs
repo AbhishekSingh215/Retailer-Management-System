@@ -1367,7 +1367,7 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.PaymentTypeTimestamp)
                 .IsRowVersion()
                 .IsConcurrencyToken();
-            entity.Property(e => e.PaymentisMod).HasDefaultValue(false);
+            entity.Property(e => e.PaymentisMod).HasDefaultValue(false).HasConversion<int>();
         });
 
         modelBuilder.Entity<ProductColor>(entity =>
@@ -1669,6 +1669,9 @@ public partial class ApplicationDbContext : DbContext
             entity.Property(e => e.PurtTotalSalesmanpoint)
                 .HasDefaultValue(0m)
                 .HasColumnType("decimal(14, 4)");
+            entity.Property(e => e.PurtPackQty)
+                .HasDefaultValue(0m)
+                .HasColumnType("numeric(14, 4)");
             entity.Property(e => e.PurtWhatsappSent).HasDefaultValue(false);
             entity.Property(e => e.PurtWhatsappSentonReceived).HasDefaultValue(false);
         });
@@ -1759,7 +1762,7 @@ public partial class ApplicationDbContext : DbContext
         {
             entity.HasKey(e => e.ReceiptId).HasName("PK_Receiptchase");
 
-            entity.ToTable("Receipt");
+            entity.ToTable("Receipt", tb => tb.HasTrigger("trg_Receipt"));
 
             entity.HasIndex(e => new { e.ReceiptRefPurId, e.ReceiptType }, "IX_Receipt_ReceiptRefPurID");
 

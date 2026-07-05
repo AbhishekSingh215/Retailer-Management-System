@@ -74,6 +74,76 @@ public class SalesController : ControllerBase
         return Ok(types);
     }
 
+    [HttpGet("available-credit-notes")]
+    public async Task<IActionResult> GetAvailableCreditNotes([FromQuery] string mobileNumber, [FromQuery] long excludePurId = 0, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(mobileNumber))
+        {
+            return BadRequest(new { message = "Mobile number is required." });
+        }
+
+        var customer = await _context.Customers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.CustomerMobileNo == mobileNumber, cancellationToken);
+
+        if (customer == null)
+        {
+            return Ok(new List<object>());
+        }
+
+        var dbContext = (DbContext)_context;
+        var list = new List<object>();
+
+        using (var command = dbContext.Database.GetDbConnection().CreateCommand())
+        {
+            command.CommandText = @"
+                SELECT t.PurId, t.PurDocno, t.PurDocDate, t.PurCustomerId, t.RemainingAmount 
+                FROM (
+                    SELECT ref.PurId, ref.PurDocno, ref.PurDocDate, ref.PurCustomerId, 
+                           ref.PurNetAmount - ISNULL((
+                               SELECT SUM(r.ReceiptAdjustAmount) 
+                               FROM Receipt r 
+                               LEFT JOIN Purchase p ON p.PurId = r.ReceiptRefPurId 
+                               WHERE r.ReceiptReturnId = ref.PurId AND p.IsDeleted = 0 AND r.ReceiptRefPurId != @ExcludePurId
+                           ), 0) AS RemainingAmount 
+                    FROM Purchase ref 
+                    WHERE ref.PurType = 8 AND ref.IsDeleted = 0 AND ref.PurNetAmount > 0 AND ref.PurCustomerId = @CustomerId
+                ) t
+                WHERE t.RemainingAmount > 0
+            ";
+
+            var pExclude = command.CreateParameter();
+            pExclude.ParameterName = "@ExcludePurId";
+            pExclude.Value = excludePurId;
+            command.Parameters.Add(pExclude);
+
+            var pCust = command.CreateParameter();
+            pCust.ParameterName = "@CustomerId";
+            pCust.Value = customer.CustomerId;
+            command.Parameters.Add(pCust);
+
+            if (command.Connection.State != ConnectionState.Open)
+                await command.Connection.OpenAsync(cancellationToken);
+
+            using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+            {
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    list.Add(new
+                    {
+                        purId = Convert.ToInt64(reader["PurId"]),
+                        purDocno = Convert.ToInt64(reader["PurDocno"]),
+                        purDocDate = Convert.ToDateTime(reader["PurDocDate"]),
+                        purCustomerId = Convert.ToInt64(reader["PurCustomerId"]),
+                        remainingAmount = Convert.ToDecimal(reader["RemainingAmount"])
+                    });
+                }
+            }
+        }
+
+        return Ok(list);
+    }
+
     [HttpGet("next-docno")]
     public async Task<IActionResult> GetNextDocNo([FromQuery] long companyId = 1, [FromQuery] long companyCount = 1)
     {
@@ -525,19 +595,24 @@ public class SalesController : ControllerBase
             PurAdvanceAmount = header.PurAdvanceAmount,
             PurReceiptAmount = header.PurReceiptAmount,
             Items = items,
-            Payments = await _context.PaymentTypes
+            Payments = (await _context.PaymentTypes
                 .AsNoTracking()
+                .ToListAsync(cancellationToken))
                 .Select(pt => new PaymentAmountDto
                 {
                     PaymentTypeId = pt.PaymentTypeId,
                     PaymentTypeName = pt.PaymentTypeName,
-                    Amount = pt.PaymentTypeName.ToLower().Contains("cash") ? (header.PurCashAmount ?? 0) :
-                             pt.PaymentTypeName.ToLower().Contains("card") ? (header.PurCardAmount ?? 0) :
-                             pt.PaymentTypeName.ToLower().Contains("upi") ? (header.PurUpiAmount ?? 0) :
-                             pt.PaymentTypeName.ToLower().Contains("advance") ? (header.PurAdvanceAmount ?? 0) :
-                             pt.PaymentTypeName.ToLower().Contains("bank") ? (header.PurReceiptAmount ?? 0) : 0
+                    Amount = paymentAmounts.TryGetValue(pt.PaymentTypeId, out var amt) ? amt : 0
                 })
-                .ToListAsync()
+                .ToList(),
+            CreditNoteAdjustments = receipts
+                .Where(r => r.ReceiptReturnId.HasValue && r.ReceiptReturnId.Value > 0)  
+                .Select(r => new CreditNoteAdjustmentDto
+                {
+                    PurId = r.ReceiptReturnId.GetValueOrDefault(),
+                    PurAdjustAmount = r.ReceiptAmount ?? r.ReceiptAdjustAmount ?? 0m
+                })
+                .ToList()
         });
     }
 
@@ -925,7 +1000,7 @@ public class SalesController : ControllerBase
                 var bd = bds.FirstOrDefault(b => b.BarcodeDesc == item.Barcode || b.BarcodeSourceBarcode == item.Barcode);
                 var pm = (bd != null && bd.BarcodeProductId.HasValue && pmDict.ContainsKey(bd.BarcodeProductId.Value)) ? pmDict[bd.BarcodeProductId.Value] : null;
 
-                decimal taxInclusiveUnitPrice = item.SelPrice - item.Discount;
+                decimal taxInclusiveUnitPrice = item.SelPrice - item.PerDiscount;
                 decimal taxInclusiveAmount = taxInclusiveUnitPrice * item.Qty;
 
                 // Lookup HSN and TaxMaster details
@@ -1006,7 +1081,7 @@ public class SalesController : ControllerBase
                     PurtRate = item.SelPrice - item.PerDiscount,
                     PurtDebitQty = 0,
                     PurtCreditQty = item.Qty,
-                    PurtCreditAmount = baseAmount,
+                    PurtCreditAmount = taxInclusiveAmount,  // exact tax-inclusive value shown on screen
                     PurtHsnId = pm?.ProductHsnId,
                     PurtTaxId = tax?.TaxId,
                     PurtTaxRate1 = taxRate1,
@@ -1059,6 +1134,10 @@ public class SalesController : ControllerBase
             header.PurNetAmount = Math.Round(request.NetAmount);
 
             // Gather payments to process
+            var paymentTypes = await _context.PaymentTypes
+                .Select(t => new { t.PaymentTypeId, t.PaymentTypeName })
+                .ToListAsync(cancellationToken);
+
             var paymentsToProcess = new List<(long PaymentTypeId, decimal Amount)>();
             if (request.Payments != null && request.Payments.Any())
             {
@@ -1072,9 +1151,6 @@ public class SalesController : ControllerBase
             }
             else
             {
-                var paymentTypes = await _context.PaymentTypes
-                    .Select(t => new { t.PaymentTypeId, t.PaymentTypeName })
-                    .ToListAsync(cancellationToken);
                 var cashType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("cash"));
                 var cardType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("card"));
                 var upiType = paymentTypes.FirstOrDefault(t => t.PaymentTypeName.ToLower().Contains("upi"));
@@ -1132,14 +1208,62 @@ public class SalesController : ControllerBase
                     int receiptIndex = 0;
                     foreach (var p in paymentsToProcess)
                     {
+                        var subType = await _context.PaymentSubTypes.FirstOrDefaultAsync(st => st.PaymentSubTypePaymentId == p.PaymentTypeId);
+                        long paymentSubTypeId = subType?.PaymentSubTypeId ?? 0;
+
+                        var pType = paymentTypes.FirstOrDefault(t => t.PaymentTypeId == p.PaymentTypeId);
+                        bool isCNote = pType != null && (pType.PaymentTypeName.ToLower().Contains("creditnote") || pType.PaymentTypeName.ToLower().Contains("credit note") || pType.PaymentTypeName.ToLower() == "cnote");
+
+                        if (isCNote && request.CreditNoteAdjustments != null && request.CreditNoteAdjustments.Any())
+                        {
+                            foreach (var adj in request.CreditNoteAdjustments)
+                            {
+                                if (adj.PurId == 0 || adj.PurAdjustAmount <= 0)
+                                    continue;
+
+                                long adjReceiptPkNo = startReceiptPkNo + receiptIndex;
+                                long adjReceiptId = startReceiptIdStr.StartsWith(locationStr) ? long.Parse(locationStr + adjReceiptPkNo.ToString()) : adjReceiptPkNo;
+                                receiptIndex++;
+
+                                var receipt = new Receipt
+                                {
+                                    ReceiptId = adjReceiptId,
+                                    ReceiptCompanyId = header.PurCompanyId,
+                                    ReceiptCompanyCount = header.PurCompanyCount,
+                                    ReceiptType = 1, // Sales
+                                    ReceiptLocation = companyProfile?.CompanyLocation,
+                                    ReceiptDocno = header.PurDocno,
+                                    ReceiptDocDate = parsedDate,
+                                    ReceiptCustomerId = cust?.CustomerId,
+                                    ReceiptAmount = adj.PurAdjustAmount,
+                                    ReceiptAdjustAmount = adj.PurAdjustAmount,
+                                    ReceiptRecordCreated = DateTime.UtcNow,
+                                    ReceiptRecordModified = DateTime.UtcNow,
+                                    ReceiptUserNewId = userId,
+                                    ReceiptLastModified = userId,
+                                    ReceiptMaxPkno = adjReceiptPkNo,
+                                    ReceiptRefPurId = header.PurId,
+                                    ReceiptAdjustDate = parsedDate,
+                                    ReceiptPaymentSubTypeId = paymentSubTypeId,
+                                    ReceiptAdvanceId = 0,
+                                    ReceiptReturnId = adj.PurId,
+                                    ReceiptIsAdvance = false,
+                                    ReceiptLedgerId = 0,
+                                    ReceiptIsExpense = false,
+                                    ReceiptDirection = 1,
+                                    ReceiptNotes = null,
+                                    ReceiptTransferGroupId = 0
+                                };
+                                _context.Receipts.Add(receipt);
+                            }
+                            continue;
+                        }
+
                         long currentReceiptPkNo = startReceiptPkNo + receiptIndex;
                         long nextReceiptId = startReceiptIdStr.StartsWith(locationStr) ? long.Parse(locationStr + currentReceiptPkNo.ToString()) : currentReceiptPkNo;
                         receiptIndex++;
 
-                        var subType = await _context.PaymentSubTypes.FirstOrDefaultAsync(st => st.PaymentSubTypePaymentId == p.PaymentTypeId);
-                        long paymentSubTypeId = subType?.PaymentSubTypeId ?? 0;
-
-                        var receipt = new Receipt
+                        var defaultReceipt = new Receipt
                         {
                             ReceiptId = nextReceiptId,
                             ReceiptCompanyId = header.PurCompanyId,
@@ -1168,7 +1292,7 @@ public class SalesController : ControllerBase
                             ReceiptNotes = null,
                             ReceiptTransferGroupId = 0
                         };
-                        _context.Receipts.Add(receipt);
+                        _context.Receipts.Add(defaultReceipt);
                     }
                     await _context.SaveChangesAsync();
                 }
@@ -1421,8 +1545,8 @@ public class SalesController : ControllerBase
             ISNULL(PurtSelPrice, 0) AS SalesSelPrice,
             ISNULL(PurtRate, 0) AS SalesRate,
             ISNULL(PurGrossAmount, 0) AS SalesGrossAmount,
-            ISNULL(PurtDiscountPercent, 0) AS SalesDiscountPercent,
-            ISNULL(PurtDiscAmount, 0) AS SalesDiscountAmount,
+            ISNULL(PurDiscountPercent, 0) AS SalesDiscountPercent,
+            ISNULL(PurDiscountAmount, 0) AS SalesDiscountAmount,
             ISNULL(PurNetAmount, 0) AS SalesNetAmount,
             PurType AS SalesType,
             PurtHsnId AS SalesHsnId,
@@ -1658,6 +1782,7 @@ public class SalesController : ControllerBase
                 dtDetails.Columns.Add("PurtSourcecode", typeof(string));
                 dtDetails.Columns.Add("PurtSalesmanPoints", typeof(decimal));
                 dtDetails.Columns.Add("PurtTotalSalesmanpoint", typeof(decimal));
+                dtDetails.Columns.Add("PurtPackQty", typeof(decimal));
 
                 foreach (var line in lines)
                 {
@@ -1716,7 +1841,8 @@ public class SalesController : ControllerBase
                         line.PurtRemarks ?? (object)DBNull.Value,
                         line.PurtSourcecode ?? (object)DBNull.Value,
                         line.PurtSalesmanPoints ?? 0m,
-                        line.PurtTotalSalesmanpoint ?? 0m
+                        line.PurtTotalSalesmanpoint ?? 0m,
+                        line.PurtPackQty ?? 0m
                     );
                 }
 

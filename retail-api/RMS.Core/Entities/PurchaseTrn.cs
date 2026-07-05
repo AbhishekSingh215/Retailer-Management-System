@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace RMS.Core.Entities;
@@ -138,4 +138,6 @@ public partial class PurchaseTrn
     public decimal? PurtSalesmanPoints { get; set; }
 
     public decimal? PurtTotalSalesmanpoint { get; set; }
+
+    public decimal? PurtPackQty { get; set; }
 }

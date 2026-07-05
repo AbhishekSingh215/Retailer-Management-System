@@ -133,6 +133,14 @@ const SalesEntry: React.FC = () => {
     setIsPaymentModalOpen,
     isCredit,
     setIsCredit,
+    isCNoteAdjust,
+    setIsCNoteAdjust,
+    availableCreditNotes,
+    selectedCreditNotes,
+    setSelectedCreditNotes,
+    isLoadingCreditNotes,
+    handleSelectCreditNote,
+    handleUpdateCreditNoteAmount,
     saveToBackend,
     paymentTypes,
     customReports,
@@ -430,8 +438,8 @@ const SalesEntry: React.FC = () => {
 
       <button
         onClick={handlePreviewInvoice}
-        disabled={items.length === 0 || isSaving || isPreviewLoading}
-        className={`px-3.5 py-1.5 bg-cyan-50 dark:bg-cyan-500/10 hover:bg-cyan-100 dark:hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 rounded-xl border border-cyan-200 dark:border-cyan-500/30 text-[12px] font-[1000] flex items-center gap-2 transition-all shadow-sm active:scale-95 whitespace-nowrap ${items.length === 0 || isSaving || isPreviewLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+        disabled={items.length === 0 || isSaving || isPreviewLoading || formMode === 'EDIT'}
+        className={`px-3.5 py-1.5 bg-cyan-50 dark:bg-cyan-500/10 hover:bg-cyan-100 dark:hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 rounded-xl border border-cyan-200 dark:border-cyan-500/30 text-[12px] font-[1000] flex items-center gap-2 transition-all shadow-sm active:scale-95 whitespace-nowrap ${items.length === 0 || isSaving || isPreviewLoading || formMode === 'EDIT' ? 'opacity-50 cursor-not-allowed' : ''}`}
         title="Preview Report"
       >
         {isPreviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
@@ -532,245 +540,231 @@ const SalesEntry: React.FC = () => {
 
   const renderClassicView = () => (
     <div className="flex-1 flex flex-col gap-2.5 p-3.5 overflow-hidden min-h-0 bg-slate-50/30 dark:bg-transparent">
-      {/* Row 1: Metadata Fields Grid */}
-      <div className="bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.08] rounded-2xl py-1.5 px-3 grid grid-cols-1 md:grid-cols-4 gap-2.5 shadow-sm shrink-0">
-        <div className="flex flex-col gap-0.5 min-w-0">
+      {/* Row 1: Customer Info Bar */}
+      <div className="flex items-stretch gap-0 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-2xl overflow-hidden shadow-md shrink-0">
+
+        {/* Customer Mobile — always visible */}
+        <div className="flex flex-col justify-center px-4 py-3 w-[220px] shrink-0 border-r border-slate-200 dark:border-white/[0.08] relative"
+          onBlur={(e) => {
+            if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) return;
+            setShowResults(false);
+          }}
+        >
           {isHeaderExpanded && (
-            <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-1.5">
-              <Search className="w-3 h-3 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Customer Mobile
+            <span className="text-[10px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest leading-none mb-1.5 flex items-center gap-1.5">
+              <Search className="w-3 h-3 text-indigo-500" /> Customer Mobile
             </span>
           )}
-          <div className="relative group" onBlur={(e) => {
-            if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) {
-              return;
-            }
-            setShowResults(false);
-          }}>
+          <div className="relative">
             <input
               type="text"
-              placeholder="Search mobile number..."
+              placeholder="Search mobile..."
               value={mobileNumber}
               onChange={(e) => handleMobileChange(e.target.value)}
               readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
               onFocus={() => formMode !== 'VIEW' && formMode !== 'LOCKED' && setShowResults(true)}
-              className={`w-full pl-3 pr-16 py-1 bg-white dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] rounded-xl text-[12.5px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-400 min-h-[32px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
+              className={`w-full bg-transparent border-0 p-0 pr-8 text-[14px] font-[1000] text-black dark:text-white outline-none placeholder-slate-300 dark:placeholder-white/20 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-60 cursor-not-allowed' : ''}`}
             />
-            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setIsHeaderExpanded(prev => !prev)}
-                className="p-1 hover:bg-slate-150 dark:hover:bg-white/10 rounded-lg text-indigo-600 dark:text-indigo-400 transition-all active:scale-95 flex items-center justify-center"
-                title={isHeaderExpanded ? "Hide Details" : "Show Details"}
+            <button
+              disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
+              className={`absolute right-0 top-1/2 -translate-y-1/2 p-1 bg-indigo-600 dark:bg-indigo-500 text-white rounded-lg shadow hover:bg-indigo-700 transition-all ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <Search className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <AnimatePresence>
+            {showResults && mobileNumber.trim().length >= 3 && viewMode === 'classic' && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
               >
-                {isHeaderExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-              <button disabled={formMode === 'VIEW' || formMode === 'LOCKED'} className={`p-0.5 bg-indigo-600 dark:bg-indigo-500 text-white rounded shadow hover:bg-indigo-700 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-50 cursor-not-allowed' : ''}`}><Search className="w-3 h-3" /></button>
-            </div>
-
-            <AnimatePresence>
-              {showResults && mobileNumber.trim().length >= 3 && viewMode === 'classic' && (
-                <motion.div
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -5 }}
-                  className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
-                >
-                  {searchResults.map((customer) => (
-                    <button
-                      key={customer.id}
-                      onClick={() => handleCustomerSelect(customer)}
-                      className="w-full px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-[13px] font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{customer.name}</span>
-                        <span className="text-[10px] font-bold text-slate-400">{customer.mobile}</span>
-                      </div>
-                      <span className="text-[11px] font-black text-slate-700 dark:text-white/60">{customer.loyaltyPoints}</span>
-                    </button>
-                  ))}
-                  <div className="p-3 bg-slate-50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.05]">
-                    <span className="text-[11px] font-[1000] text-indigo-650 dark:text-indigo-400 block mb-1.5 uppercase tracking-wider">New Customer Info</span>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Enter Customer Name..."
-                        value={newCustomerNameInput}
-                        onChange={(e) => setNewCustomerNameInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            if (newCustomerNameInput.trim()) {
-                              setCustomerName(newCustomerNameInput.trim());
-                              setShowResults(false);
-                              setNewCustomerNameInput('');
-                            }
-                          }
-                        }}
-                        className="flex-1 px-3 py-1 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[11px] font-bold text-black dark:text-white outline-none focus:border-indigo-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
+                {searchResults.map((customer) => (
+                  <button
+                    key={customer.id}
+                    onClick={() => handleCustomerSelect(customer)}
+                    className="w-full px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-[13px] font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{customer.name}</span>
+                      <span className="text-[10px] font-bold text-slate-400">{customer.mobile}</span>
+                    </div>
+                    <span className="text-[11px] font-black text-slate-700 dark:text-white/60">{customer.loyaltyPoints}</span>
+                  </button>
+                ))}
+                <div className="p-3 bg-slate-50 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.05]">
+                  <span className="text-[11px] font-[1000] text-indigo-600 dark:text-indigo-400 block mb-1.5 uppercase tracking-wider">New Customer</span>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter Customer Name..."
+                      value={newCustomerNameInput}
+                      onChange={(e) => setNewCustomerNameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
                           if (newCustomerNameInput.trim()) {
                             setCustomerName(newCustomerNameInput.trim());
                             setShowResults(false);
                             setNewCustomerNameInput('');
                           }
-                        }}
-                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-[1000] transition-all flex items-center gap-1 shrink-0"
-                      >
-                        <Plus className="w-3 h-3" /> Map Name
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-        {!isHeaderExpanded ? (
-          <>
-            {/* Customer Name Badge */}
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <div className="px-3 bg-emerald-50/50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-xl flex items-center justify-between shadow-sm min-h-[32px] text-[12.5px] font-[1000] text-emerald-955 dark:text-emerald-300 truncate" title={customerName || 'Walk-in Customer'}>
-                <div className="flex items-center gap-1.5 min-w-0 w-full">
-                  <User className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span className="truncate">{customerName || 'Walk-in Customer'}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Salesman Badge */}
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <div className="px-3 bg-indigo-50/50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 rounded-xl flex items-center justify-between shadow-sm min-h-[32px] text-[12.5px] font-[1000] text-indigo-955 dark:text-indigo-300 truncate" title={salesmanSearch || 'No Salesman'}>
-                <div className="flex items-center gap-1.5 min-w-0 w-full">
-                  <UserCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                  <span className="truncate">{salesmanSearch || 'No Salesman'}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Remarks Badge */}
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <div className="px-3 bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-xl flex items-center justify-between shadow-sm min-h-[32px] text-[12.5px] font-[1000] text-black dark:text-white truncate" title={remarks || 'No Remarks'}>
-                <div className="flex items-center gap-1.5 min-w-0 w-full">
-                  <FileText className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
-                  <span className="truncate">{remarks || 'No Remarks'}</span>
-                </div>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-1.5"><User className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Customer Name</span>
-              <div className="px-3 py-1 bg-emerald-50/50 dark:bg-emerald-500/10 border-2 border-emerald-200 dark:border-emerald-500/30 rounded-xl flex items-center justify-between shadow-sm min-h-[32px]">
-                <div className="flex items-center gap-2 min-w-0 w-full">
-                  <User className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                  {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
-                    <input
-                      ref={customerNameInputRef}
-                      type="text"
-                      placeholder="Walk-in Customer"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      className="w-full bg-transparent border-0 p-0 text-[12.5px] font-[1000] focus:ring-0 focus:outline-none text-emerald-950 dark:text-emerald-300 placeholder-emerald-800/30 outline-none h-6"
+                        }
+                      }}
+                      className="flex-1 px-3 py-1 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[11px] font-bold text-black dark:text-white outline-none focus:border-indigo-500"
                     />
-                  ) : (
-                    <span className={`text-[12.5px] font-[1000] truncate ${customerName ? "text-emerald-950 dark:text-emerald-300" : "text-slate-400 dark:text-white/30"}`}>
-                      {customerName || 'Walk-in Customer'}
-                    </span>
-                  )}
-                </div>
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse flex-shrink-0"></div>
-              </div>
-            </div>
-            <div className="flex flex-col gap-0.5 min-w-0 relative">
-              <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-1.5">
-                <UserCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Salesman
-              </span>
-              <div className="relative group">
-                <input
-                  type="text"
-                  placeholder="Type name..."
-                  value={salesmanSearch}
-                  onChange={(e) => {
-                    setSalesmanSearch(e.target.value);
-                    if (purSalesmanId) {
-                      setPurSalesmanId(null);
-                    }
-                    setIsSalesmanDropdownOpen(true);
-                  }}
-                  onFocus={() => {
-                    if (formMode !== 'VIEW' && formMode !== 'LOCKED') {
-                      setIsSalesmanDropdownOpen(true);
-                    }
-                  }}
-                  onBlur={() => {
-                    setTimeout(() => setIsSalesmanDropdownOpen(false), 200);
-                  }}
-                  readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
-                  className={`w-full px-3 py-1 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[12.5px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-300 min-h-[32px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
-                />
-                <AnimatePresence>
-                  {isSalesmanDropdownOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -5 }}
-                      className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (newCustomerNameInput.trim()) {
+                          setCustomerName(newCustomerNameInput.trim());
+                          setShowResults(false);
+                          setNewCustomerNameInput('');
+                        }
+                      }}
+                      className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-[1000] transition-all flex items-center gap-1 shrink-0"
                     >
-                      {salesmenList
-                        .filter(s =>
-                          (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
-                          (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
-                        )
-                        .map((salesman) => (
-                          <button
-                            key={salesman.id}
-                            type="button"
-                            onClick={() => {
-                              setPurSalesmanId(salesman.id);
-                              setSalesmanSearch(salesman.name);
-                              setIsSalesmanDropdownOpen(false);
-                            }}
-                            className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
-                          >
-                            <div className="flex flex-col">
-                              <span className="text-[14px] font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{salesman.name}</span>
-                              {salesman.code && <span className="text-[11px] font-bold text-slate-400">{salesman.code}</span>}
-                            </div>
-                          </button>
-                        ))
-                      }
-                      {salesmenList.filter(s =>
-                        (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
-                        (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
-                      ).length === 0 && (
-                          <div className="px-4 py-3 text-slate-400 text-[12px] font-bold">No salesmen found</div>
-                        )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
+                      <Plus className="w-3 h-3" /> Map Name
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
-            {/* Remarks */}
-            <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 stroke-[2.5px]" /> Remarks
-              </span>
-              <input
-                type="text"
-                placeholder="Billing remarks..."
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
-                className={`w-full px-3 py-1 bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.1] rounded-xl text-[12.5px] font-[1000] text-black dark:text-white focus:border-indigo-600 dark:focus:border-indigo-400 transition-all shadow-inner outline-none placeholder-slate-350 min-h-[32px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-white/[0.01]' : ''}`}
-              />
-            </div>
-          </>
-        )}
+        {/* Customer Name */}
+        <div className="flex flex-col justify-center px-4 py-3 flex-1 min-w-[160px] border-r border-slate-200 dark:border-white/[0.08]">
+          {isHeaderExpanded && (
+            <span className="text-[10px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest leading-none mb-1.5 flex items-center gap-1.5">
+              <User className="w-3 h-3 text-emerald-500" /> Customer Name
+            </span>
+          )}
+          {formMode !== 'VIEW' && formMode !== 'LOCKED' ? (
+            <input
+              ref={customerNameInputRef}
+              type="text"
+              placeholder="Walk-in Customer"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+              className="w-full bg-transparent border-0 p-0 text-[14px] font-[1000] focus:ring-0 focus:outline-none text-emerald-700 dark:text-emerald-300 placeholder-slate-300 dark:placeholder-white/20 outline-none"
+            />
+          ) : (
+            <span className={`text-[14px] font-[1000] truncate ${customerName ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-300 dark:text-white/20'}`}>
+              {customerName || 'Walk-in Customer'}
+            </span>
+          )}
+        </div>
+
+        {/* Salesman */}
+        <div className="flex flex-col justify-center px-4 py-3 w-[200px] shrink-0 border-r border-slate-200 dark:border-white/[0.08] relative">
+          {isHeaderExpanded && (
+            <span className="text-[10px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest leading-none mb-1.5 flex items-center gap-1.5">
+              <UserCheck className="w-3 h-3 text-indigo-500" /> Salesman
+            </span>
+          )}
+          <input
+            type="text"
+            placeholder="Search salesman..."
+            value={salesmanSearch}
+            onChange={(e) => {
+              setSalesmanSearch(e.target.value);
+              if (purSalesmanId) setPurSalesmanId(null);
+              setIsSalesmanDropdownOpen(true);
+            }}
+            onFocus={() => { if (formMode !== 'VIEW' && formMode !== 'LOCKED') setIsSalesmanDropdownOpen(true); }}
+            onBlur={() => { setTimeout(() => setIsSalesmanDropdownOpen(false), 200); }}
+            readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
+            className={`w-full bg-transparent border-0 p-0 text-[14px] font-[1000] text-indigo-700 dark:text-indigo-300 outline-none placeholder-slate-300 dark:placeholder-white/20 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-60 cursor-not-allowed' : ''}`}
+          />
+          <AnimatePresence>
+            {isSalesmanDropdownOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/[0.08] rounded-xl shadow-2xl z-[100] overflow-hidden max-h-[250px] overflow-y-auto custom-scrollbar"
+              >
+                {salesmenList
+                  .filter(s =>
+                    (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
+                    (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
+                  )
+                  .map((salesman) => (
+                    <button
+                      key={salesman.id}
+                      type="button"
+                      onClick={() => {
+                        setPurSalesmanId(salesman.id);
+                        setSalesmanSearch(salesman.name);
+                        setIsSalesmanDropdownOpen(false);
+                      }}
+                      className="w-full px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] border-b border-slate-100 dark:border-white/[0.05] last:border-0 transition-colors flex justify-between items-center group"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-[14px] font-black text-gray-900 dark:text-white group-hover:text-indigo-600 transition-colors">{salesman.name}</span>
+                        {salesman.code && <span className="text-[11px] font-bold text-slate-400">{salesman.code}</span>}
+                      </div>
+                    </button>
+                  ))
+                }
+                {salesmenList.filter(s =>
+                  (s.name && s.name.toLowerCase().includes((salesmanSearch || '').toLowerCase())) ||
+                  (s.code && s.code.toLowerCase().includes((salesmanSearch || '').toLowerCase()))
+                ).length === 0 && (
+                  <div className="px-4 py-3 text-slate-400 text-[12px] font-bold">No salesmen found</div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Remarks */}
+        <div className="flex flex-col justify-center px-4 py-3 flex-1 min-w-[140px] border-r border-slate-200 dark:border-white/[0.08]">
+          {isHeaderExpanded && (
+            <span className="text-[10px] font-black text-slate-400 dark:text-white/40 uppercase tracking-widest leading-none mb-1.5 flex items-center gap-1.5">
+              <FileText className="w-3 h-3" /> Remarks
+            </span>
+          )}
+          <input
+            type="text"
+            placeholder="Billing remarks..."
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+            readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
+            className={`w-full bg-transparent border-0 p-0 text-[14px] font-[1000] text-slate-700 dark:text-slate-200 outline-none placeholder-slate-300 dark:placeholder-white/20 ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-60 cursor-not-allowed' : ''}`}
+          />
+        </div>
+
+        {/* CNote Adjust Toggle — always visible */}
+        <div className="flex flex-col justify-center items-center px-5 py-3 shrink-0 gap-2 select-none bg-indigo-50/50 dark:bg-indigo-500/5 border-l border-slate-200 dark:border-white/[0.08]">
+          {isHeaderExpanded && (
+            <span className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest leading-none whitespace-nowrap">CNote Adj.</span>
+          )}
+          <button
+            type="button"
+            disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
+            onClick={() => setIsCNoteAdjust(!isCNoteAdjust)}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-all duration-200 ease-in-out outline-none items-center px-0.5 ${isCNoteAdjust ? 'bg-indigo-600 dark:bg-indigo-500 shadow-lg shadow-indigo-500/30' : 'bg-slate-200 dark:bg-white/20'} ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition duration-200 ease-in-out ${isCNoteAdjust ? 'translate-x-5' : 'translate-x-0'}`}
+            />
+          </button>
+        </div>
+
+        {/* Expand / Collapse */}
+        <div className="flex items-center justify-center px-3 shrink-0 border-l border-slate-200 dark:border-white/[0.08]">
+          <button
+            type="button"
+            onClick={() => setIsHeaderExpanded(prev => !prev)}
+            className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-white/40 transition-all active:scale-95"
+            title={isHeaderExpanded ? 'Collapse details' : 'Expand to edit details'}
+          >
+            {isHeaderExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+
       </div>
 
       {/* Row 2: Scanning Command Bar - EVEN SLIMMER */}
@@ -882,10 +876,10 @@ const SalesEntry: React.FC = () => {
                 <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-24 text-right pr-[33px] bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc %</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Disc Amt</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-200 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Rate</th>
+                <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest w-40 text-right bg-indigo-800 dark:bg-indigo-950 border-r border-indigo-600/30">Net Amount</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-32 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">HSN</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-40 bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Desc</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-100 uppercase tracking-widest w-36 text-right bg-indigo-600 dark:bg-indigo-900 border-r border-indigo-500/30">Tax Amt</th>
-                <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest w-40 text-right bg-indigo-800 dark:bg-indigo-950 border-r border-indigo-600/30">Net Amount</th>
                 <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right bg-indigo-800 dark:bg-indigo-950">Per Disc</th>
               </tr>
             </thead>
@@ -1037,10 +1031,10 @@ const SalesEntry: React.FC = () => {
                     )}
                   </td>
                   <td className="px-6 py-5 text-[15px] font-[1000] text-emerald-800 dark:text-emerald-400 text-right whitespace-nowrap">₹{(item.selPrice - (item.rowDiscount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-5 text-[19px] font-[1000] text-indigo-950 dark:text-indigo-200 text-right whitespace-nowrap bg-indigo-100/40 dark:bg-indigo-500/10 border-l border-indigo-200/50 border-r border-indigo-200/30">₹{((item.selPrice - (item.rowDiscount || 0)) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.hsn}</td>
                   <td className="px-6 py-5 text-[12px] font-[900] text-slate-600">{item.taxDesc}</td>
                   <td className="px-6 py-5 text-[13px] font-[900] text-slate-600 text-right whitespace-nowrap">₹{item.taxAmt.toLocaleString()}</td>
-                  <td className="px-6 py-5 text-[19px] font-[1000] text-indigo-950 dark:text-indigo-200 text-right whitespace-nowrap bg-indigo-100/40 dark:bg-indigo-500/10 border-l border-indigo-200/50 border-r border-indigo-200/30">₹{((item.selPrice - (item.rowDiscount || 0)) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   <td className="px-6 py-4 text-right whitespace-nowrap bg-indigo-100/30 dark:bg-indigo-500/5">
                     <span className="inline-block text-[14px] font-[1000] text-rose-700 dark:text-rose-400 pr-[9px]">
                       ₹{(item.discount - (item.rowDiscount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1204,7 +1198,7 @@ const SalesEntry: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="space-y-1 col-span-1 md:col-span-3 relative">
+                      <div className="space-y-1 col-span-1 md:col-span-2 relative">
                         <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
                           <UserCheck className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" /> Salesman
                         </label>
@@ -1301,7 +1295,7 @@ const SalesEntry: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="space-y-1 col-span-1 md:col-span-3">
+                      <div className="space-y-1 col-span-1 md:col-span-2">
                         <label className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider ml-1 flex items-center gap-2">
                           <FileText className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 stroke-[2.5px]" /> Remarks
                         </label>
@@ -1313,6 +1307,27 @@ const SalesEntry: React.FC = () => {
                           readOnly={formMode === 'VIEW' || formMode === 'LOCKED'}
                           className={`w-full bg-slate-50 dark:bg-white/[0.03] border-2 border-slate-200 dark:border-white/[0.1] text-gray-900 dark:text-white text-[13px] font-[1000] rounded-xl px-4 py-1.5 outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner min-h-[38px] ${formMode === 'VIEW' || formMode === 'LOCKED' ? 'opacity-70 cursor-not-allowed bg-slate-100 dark:bg-white/[0.01]' : ''}`}
                         />
+                      </div>
+
+                      <div className="space-y-1 col-span-1 md:col-span-2">
+                        <label className="text-[11px] opacity-0 select-none pointer-events-none block">CNote Adjust</label>
+                        <div className="flex items-center gap-2.5 min-h-[38px] select-none">
+                          <button
+                            type="button"
+                            disabled={formMode === 'VIEW' || formMode === 'LOCKED'}
+                            onClick={() => setIsCNoteAdjust(!isCNoteAdjust)}
+                            className={`relative inline-flex h-4.5 w-8.5 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-250 ease-in-out outline-none items-center px-0.5 ${isCNoteAdjust ? 'bg-indigo-600 dark:bg-indigo-500' : 'bg-slate-200 dark:bg-white/20'
+                              }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-md transition duration-250 ease-in-out ${isCNoteAdjust ? 'translate-x-4' : 'translate-x-0'
+                                }`}
+                            />
+                          </button>
+                          <span className="text-[11.5px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-wider whitespace-nowrap">
+                            CNote Adjust
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1752,6 +1767,13 @@ const SalesEntry: React.FC = () => {
                         isSaving={isSaving}
                         isCredit={isCredit}
                         setIsCredit={setIsCredit}
+                        isCNoteAdjust={isCNoteAdjust}
+                        availableCreditNotes={availableCreditNotes}
+                        selectedCreditNotes={selectedCreditNotes}
+                        setSelectedCreditNotes={setSelectedCreditNotes}
+                        isLoadingCreditNotes={isLoadingCreditNotes}
+                        handleSelectCreditNote={handleSelectCreditNote}
+                        handleUpdateCreditNoteAmount={handleUpdateCreditNoteAmount}
                       />
                     </motion.div>
                   )}
@@ -1923,6 +1945,13 @@ const SalesEntry: React.FC = () => {
                 isSaving={isSaving}
                 isCredit={isCredit}
                 setIsCredit={setIsCredit}
+                isCNoteAdjust={isCNoteAdjust}
+                availableCreditNotes={availableCreditNotes}
+                selectedCreditNotes={selectedCreditNotes}
+                setSelectedCreditNotes={setSelectedCreditNotes}
+                isLoadingCreditNotes={isLoadingCreditNotes}
+                handleSelectCreditNote={handleSelectCreditNote}
+                handleUpdateCreditNoteAmount={handleUpdateCreditNoteAmount}
               />
             </motion.div>
           </div>
@@ -2042,10 +2071,10 @@ const SalesEntry: React.FC = () => {
                         <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-24 text-right pr-[33px] border-r border-white/10">Disc %</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right border-r border-white/10">Disc Amt</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-emerald-200 uppercase tracking-widest w-36 text-right border-r border-white/10">Rate</th>
+                        <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest w-40 text-right border-r border-white/10">Net Amount</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-32 border-r border-white/10">HSN</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-40 border-r border-white/10">Tax Desc</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-indigo-200 uppercase tracking-widest w-36 text-right border-r border-white/10">Tax Amt</th>
-                        <th className="px-6 py-4 text-[11px] font-[1000] text-white uppercase tracking-widest w-40 text-right border-r border-white/10">Net Amount</th>
                         <th className="px-6 py-4 text-[11px] font-[1000] text-rose-300 uppercase tracking-widest w-36 text-right">Per Disc</th>
                       </tr>
                     </thead>
@@ -2193,10 +2222,10 @@ const SalesEntry: React.FC = () => {
                             )}
                           </td>
                           <td className="px-6 py-4 text-[13px] font-black text-emerald-400 text-right border-r border-white/5">₹{(item.selPrice - (item.rowDiscount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="px-6 py-4 text-[16px] font-black text-indigo-300 text-right bg-white/[0.02] border-r border-white/5">₹{((item.selPrice - (item.rowDiscount || 0)) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="px-6 py-4 text-[12px] font-bold text-white/50 border-r border-white/5">{item.hsn}</td>
                           <td className="px-6 py-4 text-[12px] font-bold text-white/50 border-r border-white/5">{item.taxDesc}</td>
                           <td className="px-6 py-4 text-[12px] font-bold text-white/60 text-right border-r border-white/5">₹{item.taxAmt.toLocaleString()}</td>
-                          <td className="px-6 py-4 text-[16px] font-black text-indigo-300 text-right bg-white/[0.02] border-r border-white/5">₹{((item.selPrice - (item.rowDiscount || 0)) * item.qty).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="px-6 py-4 text-right bg-white/[0.01]">
                             <span className="inline-block text-[13px] font-black text-rose-400 pr-[9px]">
                               ₹{(item.discount - (item.rowDiscount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

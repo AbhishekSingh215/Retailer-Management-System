@@ -30,6 +30,7 @@ public class SalesInvoiceDto
     public decimal? PurReceiptAmount { get; set; }
     public List<SalesLineItemDto> Items { get; set; } = new List<SalesLineItemDto>();
     public List<PaymentAmountDto> Payments { get; set; } = new List<PaymentAmountDto>();
+    public List<CreditNoteAdjustmentDto> CreditNoteAdjustments { get; set; } = new List<CreditNoteAdjustmentDto>();
 }
 
 public class SalesLineItemDto
